@@ -27,7 +27,7 @@ const PreviewGear: React.FC<{ def: any, theme: 'dark' | 'light' | 'steam' }> = (
     const opacity = theme === 'steam' ? "0.9" : "0.8";
 
     return (
-        <svg width={def.radius * 2.2} height={def.radius * 2.2} viewBox={`-${def.radius*1.2} -${def.radius*1.2} ${def.radius * 2.4} ${def.radius * 2.4}`} className="overflow-visible pointer-events-none block drop-shadow-lg">
+        <svg width={def.radius * 2.2} height={def.radius * 2.2} viewBox={`-${def.radius*1.2} -${def.radius*1.2} ${def.radius * 2.4} ${def.radius * 2.4}`} className="overflow-visible pointer-events-none block drop-shadow-lg transition-transform">
             <path 
                 d={pathData} 
                 fill={color} 
@@ -119,25 +119,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
     <>
         {/* Mobile Backdrop */}
         <div 
-            className={`fixed inset-0 bg-black/50 z-30 transition-opacity duration-300 md:hidden ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+            className={`fixed inset-0 bg-black/50 z-[60] transition-opacity duration-300 md:hidden ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
             onClick={onToggle}
         />
 
         {/* Toggle Tab / Handle */}
-        <button 
-            onClick={onToggle}
-            className={`fixed z-50 top-1/2 -translate-y-1/2 transition-all duration-300 flex items-center justify-center w-8 h-20 bg-[var(--bg-panel)] border border-[var(--border-color)] border-l-0 rounded-r-xl shadow-xl hover:bg-[var(--bg-app)] text-[var(--text-accent)] font-bold text-xl focus:outline-none`}
+        <div 
+            className={`fixed z-[80] top-1/2 -translate-y-1/2 transition-all duration-300 flex items-center justify-center w-8 h-20 bg-[var(--bg-panel)] border border-[var(--border-color)] border-l-0 rounded-r-xl shadow-xl hover:bg-[var(--bg-app)] text-[var(--text-accent)] font-bold text-xl focus:outline-none cursor-pointer`}
             style={{ 
                 left: isOpen ? (isMobile ? '85vw' : '24rem') : '0',
             }}
+            onClick={onToggle}
         >
             {isOpen ? '‹' : '›'}
-        </button>
+        </div>
 
         {/* Sidebar Container */}
         <div 
             id="sidebar-container"
-            className={`fixed md:relative z-40 inset-y-0 left-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out
+            className={`fixed md:relative z-[70] inset-y-0 left-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out
                 bg-[var(--bg-panel)] border-r border-[var(--border-color)] text-[var(--text-primary)]
                 ${isOpen ? 'translate-x-0 w-[85vw] sm:w-96' : '-translate-x-full w-[85vw] sm:w-96 md:translate-x-0 md:w-0 md:border-r-0 md:overflow-hidden'}
             `}
@@ -203,25 +203,29 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
           </div>
 
           {activeTab === 'parts' && (
-            <div className="flex-1 overflow-y-auto p-6 space-y-10 animate-in fade-in slide-in-from-left-4 duration-300 no-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 animate-in fade-in slide-in-from-left-4 duration-300 no-scrollbar">
                <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>{t.componentTray}</p>
-              {Object.values(GEAR_DEFS).map((def) => (
-                <div key={def.type} className="flex flex-col items-center">
-                  <div 
-                    className="cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-8 rounded-full border-2 border-dashed hover:border-solid"
-                    style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}
-                    draggable={true}
-                    onDragStart={(e) => onDragStart(e, def.type, 'gear')}
-                    onClick={() => onAddGear(def.type)}
-                  >
-                    <PreviewGear def={def} theme={theme} />
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110" style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }} onClick={(e) => { e.stopPropagation(); onAddGear(def.type); }} draggable={false}>{t.add}</button>
+              <div className="grid grid-cols-2 gap-4">
+                  {Object.values(GEAR_DEFS).map((def) => (
+                    <div key={def.type} className="flex flex-col items-center">
+                      <div 
+                        className="w-full aspect-square flex items-center justify-center cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-2 rounded-full border-2 border-dashed hover:border-solid"
+                        style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}
+                        draggable={true}
+                        onDragStart={(e) => onDragStart(e, def.type, 'gear')}
+                        onClick={() => onAddGear(def.type)}
+                      >
+                        <div className="transform scale-75">
+                             <PreviewGear def={def} theme={theme} />
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button className="text-white text-xs px-3 py-1.5 rounded-lg shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110" style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }} onClick={(e) => { e.stopPropagation(); onAddGear(def.type); }} draggable={false}>{t.add}</button>
+                        </div>
+                      </div>
+                      <span className="font-mono font-bold mt-2 text-xs tracking-wider" style={{ color: 'var(--text-secondary)' }}>{def.teeth} {t.teeth}</span>
                     </div>
-                  </div>
-                  <span className="font-mono font-bold mt-4 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{def.teeth} {t.teeth}</span>
-                </div>
-              ))}
+                  ))}
+              </div>
             </div>
           )}
 

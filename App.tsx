@@ -819,11 +819,12 @@ const App: React.FC = () => {
         if (interactionTargetTypeRef.current === 'gear') {
             setSelectedId(interactionTargetIdRef.current);
             setSelectedBrickId(null);
-            setIsPropertiesOpen(true); // Open persistent drawer
+            // Do NOT auto open properties panel on selection
+            // setIsPropertiesOpen(true); 
         } else if (interactionTargetTypeRef.current === 'brick') {
             setSelectedBrickId(interactionTargetIdRef.current);
             setSelectedId(null);
-            setIsPropertiesOpen(false); // Bricks have no properties (yet), close drawer or keep open empty? User only asked about Gears/Components.
+            // setIsPropertiesOpen(false); 
         }
         // If we just clicked (didn't drag), reset the interaction target immediately
         interactionTargetIdRef.current = null;
@@ -1459,11 +1460,11 @@ const App: React.FC = () => {
           lang={lang}
       />
 
-      {/* LANGUAGE & SOUND SWITCHER - BOTTOM RIGHT */}
-      <div className="absolute bottom-6 right-6 z-50 flex gap-3">
+      {/* LANGUAGE & SOUND SWITCHER - TOP RIGHT (Mobile) / BOTTOM RIGHT (Desktop) */}
+      <div className="absolute z-50 flex gap-2 md:gap-3 top-4 right-4 md:top-auto md:bottom-6 md:right-6">
         <button 
             onClick={() => { setCurrentTutorialSteps(defaultTutorialSteps); setIsTutorialOpen(true); }}
-            className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-colors text-xl shadow-lg hover:scale-105 active:scale-95 font-bold"
+            className="hidden md:flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-colors text-xl shadow-lg hover:scale-105 active:scale-95 font-bold"
             style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}
             title={t.help}
         >?</button>
@@ -1489,7 +1490,7 @@ const App: React.FC = () => {
       </div>
 
       {/* Made with Love Footer */}
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-[var(--text-secondary)] opacity-50 pointer-events-none font-mono tracking-widest uppercase z-10">
+      <div className="absolute bottom-14 md:bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-[var(--text-secondary)] opacity-50 pointer-events-none font-mono tracking-widest uppercase z-10">
          Made with <span className="text-red-500 font-bold">love</span> by STEAM SQUAD
       </div>
 
