@@ -20,7 +20,6 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
   const [isMinimized, setIsMinimized] = useState(false);
   const t = TRANSLATIONS[lang];
 
-  // Find siblings (same axle)
   const siblings = allGears.filter(g => g.axleId === gear.axleId && g.id !== gear.id);
 
   return (
@@ -37,7 +36,6 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
             color: 'var(--text-primary)'
         }}
     >
-      {/* Header */}
       <div 
         className="flex justify-between items-center p-6 border-b cursor-pointer md:cursor-default" 
         style={{ borderColor: 'var(--border-color)' }}
@@ -51,6 +49,7 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
                 {isMinimized ? '▲' : '▼'}
             </button>
             <h3 className="font-bold uppercase tracking-widest text-base" style={{ color: 'var(--text-accent)' }}>{t.propTitle}</h3>
+            {gear.fixed && <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded ml-2">LOCKED</span>}
         </div>
         <button 
             onClick={(e) => { e.stopPropagation(); onClose(); }} 
@@ -60,13 +59,11 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
         </button>
       </div>
 
-      {/* Scrollable Content - Hidden when minimized on mobile */}
       <div className={`
         p-6 space-y-6 overflow-y-auto no-scrollbar
         ${isMinimized ? 'hidden md:block' : 'block'}
       `} style={{ maxHeight: 'calc(80vh - 4rem)', height: '100%' }}>
         
-        {/* Telemetry Section */}
         <div className="p-5 rounded-2xl border-2 relative overflow-hidden" style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}>
           <div className="absolute top-3 right-3">
              <div className={`w-3 h-3 rounded-full animate-pulse shadow-lg ${gear.isStalled ? 'bg-red-500' : 'bg-cyan-500'}`}></div>
@@ -87,7 +84,6 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
             </div>
           </div>
           
-          {/* Load / Resistance Slider */}
           <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
             <div className="flex justify-between items-center mb-2">
                 <label className="text-xs font-bold text-purple-400 uppercase">{t.load}</label>
@@ -100,11 +96,11 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
                     value={gear.load}
                     onChange={(e) => onUpdate(gear.id, { load: parseInt(e.target.value) })}
                     className="kid-slider accent-purple-500"
+                    disabled={gear.fixed && gear.load > 0} // Disable changing load if it's a challenge target
                 />
             </div>
           </div>
 
-          {/* Alerts */}
           {gear.isJammed && (
              <div className="mt-4 text-sm font-bold text-red-100 bg-red-600 border-2 border-red-400 p-3 rounded-xl flex items-center gap-3 shadow-lg animate-pulse">
                <span className="text-xl">⚠️</span> {t.jamDetected}
@@ -118,7 +114,6 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
           )}
         </div>
 
-        {/* Compound Gear Section */}
         <div className="p-5 rounded-2xl border-2" style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}>
            <div className="text-xs font-bold uppercase tracking-widest mb-4 opacity-60">{t.compoundAssembly}</div>
            
@@ -168,7 +163,6 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
            )}
         </div>
         
-        {/* Connections / Belts */}
         <div className="p-2">
              <button 
                  onClick={() => onConnectBelt(gear.id)}
@@ -179,22 +173,7 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
              </button>
         </div>
 
-        {/* Actions */}
         <div className="pt-4 border-t-2 space-y-5 pb-10 md:pb-0" style={{ borderColor: 'var(--border-color)' }}>
-            <div className="flex items-center justify-between bg-black/10 p-3 rounded-xl">
-            <label className="text-sm font-bold uppercase tracking-wide cursor-pointer" htmlFor='motor-toggle' style={{ color: 'var(--text-accent)' }}>{t.setMotor}</label>
-            <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                id='motor-toggle'
-                type="checkbox" 
-                className="sr-only peer"
-                checked={gear.isMotor}
-                onChange={(e) => onUpdate(gear.id, { isMotor: e.target.checked })}
-                />
-                <div className="w-14 h-8 bg-gray-700 border-2 border-gray-500 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-cyan-600 peer-checked:border-cyan-400 shadow-inner"></div>
-            </label>
-            </div>
-
             {gear.isMotor && (
             <div className="space-y-5 p-4 rounded-2xl border-2" style={{ backgroundColor: 'rgba(0,0,0,0.1)', borderColor: 'var(--border-color)' }}>
                 <div>
@@ -208,10 +187,10 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
                         value={gear.motorSpeed}
                         onChange={(e) => onUpdate(gear.id, { motorSpeed: parseFloat(e.target.value) })}
                         className="kid-slider accent-cyan-500"
+                        disabled={gear.fixed}
                     />
                 </div>
                 
-                {/* Input Torque Control */}
                 <div>
                     <div className="flex justify-between mb-2">
                         <label className="text-xs font-bold text-purple-400 uppercase">{t.inputTorque}</label>
@@ -223,6 +202,7 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
                         value={gear.motorTorque || 100}
                         onChange={(e) => onUpdate(gear.id, { motorTorque: parseInt(e.target.value) })}
                         className="kid-slider accent-purple-500"
+                        disabled={gear.fixed}
                     />
                 </div>
 
@@ -232,12 +212,14 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
                     <button 
                         onClick={() => onUpdate(gear.id, { motorDirection: 1 })}
                         className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider rounded-xl border-2 transition-all ${gear.motorDirection === 1 ? 'bg-cyan-600 text-white border-cyan-400 shadow-lg' : 'bg-transparent text-cyan-500 border-cyan-800'}`}
+                        disabled={gear.fixed}
                     >
                         {t.cw}
                     </button>
                     <button 
                         onClick={() => onUpdate(gear.id, { motorDirection: -1 })}
                         className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider rounded-xl border-2 transition-all ${gear.motorDirection === -1 ? 'bg-cyan-600 text-white border-cyan-400 shadow-lg' : 'bg-transparent text-cyan-500 border-cyan-800'}`}
+                        disabled={gear.fixed}
                     >
                         {t.ccw}
                     </button>
@@ -245,13 +227,34 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
                 </div>
             </div>
             )}
-
-            <button 
-            onClick={() => onDelete(gear.id)}
-            className="w-full py-4 text-sm font-bold text-red-300 bg-red-900/20 hover:bg-red-900/40 rounded-2xl border-2 border-red-800 hover:border-red-500 transition-all flex items-center justify-center gap-2 uppercase tracking-wide mt-4 active:scale-95"
-            >
-            <span className="text-lg">🗑️</span> {t.dismantle}
-            </button>
+            
+            {!gear.fixed ? (
+                <>
+                <div className="flex items-center justify-between bg-black/10 p-3 rounded-xl">
+                <label className="text-sm font-bold uppercase tracking-wide cursor-pointer" htmlFor='motor-toggle' style={{ color: 'var(--text-accent)' }}>{t.setMotor}</label>
+                <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                    id='motor-toggle'
+                    type="checkbox" 
+                    className="sr-only peer"
+                    checked={gear.isMotor}
+                    onChange={(e) => onUpdate(gear.id, { isMotor: e.target.checked })}
+                    />
+                    <div className="w-14 h-8 bg-gray-700 border-2 border-gray-500 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-cyan-600 peer-checked:border-cyan-400 shadow-inner"></div>
+                </label>
+                </div>
+                <button 
+                onClick={() => onDelete(gear.id)}
+                className="w-full py-4 text-sm font-bold text-red-300 bg-red-900/20 hover:bg-red-900/40 rounded-2xl border-2 border-red-800 hover:border-red-500 transition-all flex items-center justify-center gap-2 uppercase tracking-wide mt-4 active:scale-95"
+                >
+                <span className="text-lg">🗑️</span> {t.dismantle}
+                </button>
+                </>
+            ) : (
+                <div className="text-center p-3 text-sm font-bold text-slate-500 bg-black/20 rounded-xl uppercase">
+                    🔒 Component Locked for Challenge
+                </div>
+            )}
         </div>
       </div>
     </div>

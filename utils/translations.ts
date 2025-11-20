@@ -6,7 +6,7 @@ export type Language = 'en' | 'zh-TW';
 export const TRANSLATIONS = {
   en: {
     // App
-    appTitle: "Build Club GearWorks",
+    appTitle: "STEAM SQUAD GearWorks",
     partsTray: "Gears",
     missions: "Missions",
     componentTray: "Component Tray",
@@ -37,13 +37,13 @@ export const TRANSLATIONS = {
     driven: "Driven",
     idler: "Idler",
     fit: "Fit",
-    initialize: "INITIALIZE SCHEMATIC...",
+    initialize: "Let's Build...",
     sound: "Sound",
     mute: "Mute",
     theme: "Theme",
     light: "Light",
     dark: "Dark",
-    steam: "STEAM Squad",
+    steam: "STEAM SQUAD",
     help: "Help",
     
     // Mission Control
@@ -116,7 +116,7 @@ export const TRANSLATIONS = {
   },
   'zh-TW': {
     // App
-    appTitle: "Build Club GearWorks",
+    appTitle: "STEAM SQUAD GearWorks",
     partsTray: "藍圖零件",
     missions: "任務挑戰",
     componentTray: "零件盤",

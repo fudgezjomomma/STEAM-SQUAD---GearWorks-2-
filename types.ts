@@ -1,4 +1,5 @@
 
+
 export enum GearType {
   Small = 'Small',         // 8T
   Twelve = 'Twelve',       // 12T
@@ -34,6 +35,7 @@ export interface GearState {
   x: number;
   y: number;
   rotation: number; // Current rotation in degrees
+  fixed?: boolean; // Cannot be moved or deleted
   
   // connectivity logic
   connectedTo: string[]; // IDs of connected gears
@@ -65,6 +67,8 @@ export interface BrickState {
   x: number;
   y: number;
   rotation: number; // 0, 90, 180, 270
+  fixed?: boolean; // Cannot be moved or deleted
+  isObstacle?: boolean; // Cannot be mounted on or passed through
 }
 
 export interface DragItem {
