@@ -1,6 +1,4 @@
 
-
-
 import React, { useMemo, useState } from 'react';
 import { GearType, Lesson } from '../types';
 import { GEAR_DEFS, BEAM_SIZES, BRICK_SIZES, HOLE_SPACING, BRICK_WIDTH, BRICK_THEME_COLORS } from '../constants';
@@ -161,7 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                 <h1 className="text-2xl font-bold flex items-center gap-3 tracking-tight" style={{ color: 'var(--text-accent)' }}>
                 <span className="text-3xl">⚙️</span> 
                 <span className="hidden sm:inline">{t.appTitle}</span>
-                <span className="sm:hidden">GearWorks</span>
+                <span className="sm:hidden">Gear Studio</span>
                 </h1>
                 {/* Mobile Close Button */}
                 <button onClick={onToggle} className="md:hidden p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>

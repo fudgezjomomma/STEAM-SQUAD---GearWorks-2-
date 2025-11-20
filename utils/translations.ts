@@ -1,12 +1,11 @@
 
 
-
 export type Language = 'en' | 'zh-TW';
 
 export const TRANSLATIONS = {
   en: {
     // App
-    appTitle: "STEAM SQUAD GearWorks",
+    appTitle: "GEAR STUDIO",
     partsTray: "Gears",
     missions: "Missions",
     componentTray: "Component Tray",
@@ -17,7 +16,7 @@ export const TRANSLATIONS = {
     solved: "Solved",
     targeting: "Targeting...",
     missionAccomplished: "Mission Accomplished!",
-    buildClubFooter: "BUILD CLUB ENGINEERING v1.0",
+    buildClubFooter: "GEAR STUDIO v1.0",
     
     // Tabs
     tabGears: "Gears",
@@ -116,7 +115,7 @@ export const TRANSLATIONS = {
   },
   'zh-TW': {
     // App
-    appTitle: "STEAM SQUAD GearWorks",
+    appTitle: "GEAR STUDIO",
     partsTray: "藍圖零件",
     missions: "任務挑戰",
     componentTray: "零件盤",
@@ -127,7 +126,7 @@ export const TRANSLATIONS = {
     solved: "已完成",
     targeting: "目標鎖定中...",
     missionAccomplished: "任務完成！",
-    buildClubFooter: "BUILD CLUB ENGINEERING v1.0",
+    buildClubFooter: "GEAR STUDIO v1.0",
 
     // Tabs
     tabGears: "齒輪",

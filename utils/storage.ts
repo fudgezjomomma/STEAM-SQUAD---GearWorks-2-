@@ -1,4 +1,5 @@
 
+
 import { Language } from './translations';
 
 const KEY_PROGRESS = 'gearworks_progress_v1';
@@ -16,7 +17,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-    theme: 'dark',
+    theme: 'steam',
     lang: 'en',
     isMuted: false,
     showSpecs: false,

@@ -1,4 +1,5 @@
 
+
 import { GearType, GearDef } from './types';
 
 // Scaling factor: 2.5 pixels per tooth roughly gives good screen sizes
@@ -24,7 +25,7 @@ export const BRICK_THEME_COLORS = {
         brick: '#475569'  // Slate-600 (Dark Grey) -> Classic Technic Look
     },
     steam: {
-        beam: '#27272A', // Zinc-800 (Dark Gray)
+        beam: '#FEF9C3', // Yellow-100 (Very Light Yellow Shading)
         brick: '#FECC00'  // Brand Yellow -> Maximum Contrast
     }
 };
@@ -38,7 +39,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#94A3B8',  // Slate-400
         light: '#EF4444', // Red-500
-        steam: '#fecc00'  // Brand Yellow
+        steam: '#F4F4F5'  // Zinc-100
     }
   },
   [GearType.Twelve]: {
@@ -48,7 +49,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#67E8F9',  // Cyan-300
         light: '#F97316', // Orange-500
-        steam: '#F4F4F5'  // Zinc-100
+        steam: '#E4E4E7'  // Zinc-200
     }
   },
   [GearType.Medium]: {
@@ -58,7 +59,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#2DD4BF',  // Teal-400
         light: '#84CC16', // Lime-500
-        steam: '#E4E4E7'  // Zinc-200
+        steam: '#D4D4D8'  // Zinc-300
     }
   },
   [GearType.MediumLarge]: {
@@ -68,7 +69,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#22D3EE',  // Cyan-400
         light: '#10B981', // Emerald-500
-        steam: '#D4D4D8'  // Zinc-300
+        steam: '#A1A1AA'  // Zinc-400
     }
   },
   [GearType.Large]: {
@@ -78,7 +79,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#38BDF8',  // Sky-400
         light: '#06B6D4', // Cyan-500
-        steam: '#A1A1AA'  // Zinc-400
+        steam: '#71717A'  // Zinc-500
     }
   },
   [GearType.TwentyEight]: {
@@ -88,7 +89,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#60A5FA',  // Blue-400
         light: '#3B82F6', // Blue-500
-        steam: '#71717A'  // Zinc-500
+        steam: '#52525B'  // Zinc-600
     }
   },
   [GearType.ThirtySix]: {
@@ -98,7 +99,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#818CF8',  // Indigo-400
         light: '#8B5CF6', // Violet-500
-        steam: '#52525B'  // Zinc-600
+        steam: '#3F3F46'  // Zinc-700
     }
   },
   [GearType.ExtraLarge]: {
@@ -108,7 +109,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#A78BFA',  // Violet-400
         light: '#D946EF', // Fuchsia-500
-        steam: '#fecc00'  // Brand Yellow (Bookend with small gear)
+        steam: '#27272A'  // Zinc-800
     }
   }
 };

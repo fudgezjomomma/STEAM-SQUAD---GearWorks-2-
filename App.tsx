@@ -72,7 +72,7 @@ const App: React.FC = () => {
   const [currentTutorialSteps, setCurrentTutorialSteps] = useState<TutorialStep[]>([]);
 
   // Sidebar State
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
   // Mobile Toolbar State
   const [isMobileToolbarOpen, setIsMobileToolbarOpen] = useState(false);
@@ -133,10 +133,7 @@ const App: React.FC = () => {
   // --- Handle Resize ---
   useEffect(() => {
     const handleResize = () => {
-        if (window.innerWidth >= 768 && !isSidebarOpen) {
-             // Optional: Auto-open on big screens if prefered
-             // setIsSidebarOpen(true);
-        }
+       // Resize logic removed to allow manual control of sidebar state
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -653,6 +650,10 @@ const App: React.FC = () => {
           const def = GEAR_DEFS[type];
           const pos = findFreeSpot(center.x, center.y, def.radius);
           addNewGear(type, pos.x, pos.y);
+          // Auto collapse on mobile
+          if (window.innerWidth < 768) {
+              setIsSidebarOpen(false);
+          }
       }
   };
 
@@ -662,6 +663,10 @@ const App: React.FC = () => {
           const center = screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
           const pos = findFreeSpot(center.x, center.y, 40);
           addNewBrick(length, type, pos.x, pos.y);
+          // Auto collapse on mobile
+          if (window.innerWidth < 768) {
+              setIsSidebarOpen(false);
+          }
       }
   };
 
@@ -1208,38 +1213,118 @@ const App: React.FC = () => {
   const generateRandomLayout = () => {
     pushHistory(gears, belts, bricks);
     setActiveChallengeId(null);
+    setChallengeSuccess(false);
+    setHighlightedGearIds([]);
 
     const generatedGears: GearState[] = [];
     const generatedBricks: BrickState[] = [];
     const generatedBelts: Belt[] = [];
     const cx = 500; const cy = 350;
 
-    const addGear = (type: GearType, x: number, y: number, axleId?: string, isMotor = false, rotation = 0): GearState => {
-        const g: GearState = {
-            id: uuidv4(), axleId: axleId || uuidv4(),
-            type, x, y, rotation: rotation % 360, connectedTo: [],
-            isMotor, motorSpeed: 1, motorRpm: 60, motorTorque: 200, motorDirection: 1,
-            load: 0, ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
-        };
-        generatedGears.push(g);
-        return g;
+    // Helper to check if space is free (simple version)
+    const isOverlapping = (x: number, y: number, r: number) => {
+        return generatedGears.some(g => Math.hypot(g.x - x, g.y - y) < (GEAR_DEFS[g.type].radius + r));
     };
 
-    // (Procedural generation logic remains roughly same, abbreviated for brevity as it wasn't changed)
-    const beam1Len = BEAM_SIZES[Math.floor(Math.random() * BEAM_SIZES.length)];
-    const beam1: BrickState = { id: uuidv4(), length: beam1Len, brickType: 'beam', x: cx - (beam1Len/2 * HOLE_SPACING), y: cy, rotation: 0 };
+    // 1. Place Base Beam
+    const beamLen = 15;
+    const beam1: BrickState = { 
+        id: uuidv4(), length: beamLen, brickType: 'beam', 
+        x: cx - ((beamLen - 1) * HOLE_SPACING) / 2, y: cy, rotation: 0 
+    };
     generatedBricks.push(beam1);
 
-    const motorIdx = 1;
-    const motorType = [GearType.Small, GearType.Medium, GearType.Large][Math.floor(Math.random()*3)];
-    addGear(motorType, beam1.x + motorIdx * HOLE_SPACING, beam1.y, undefined, true, 0);
+    // 2. Place Motor
+    const motorType = GearType.Small;
+    const startIdx = 1; 
+    const motorX = beam1.x + (startIdx * HOLE_SPACING);
+    const motorY = beam1.y;
     
-    // ... (Rest of random gen logic)
-    
+    const motorGear: GearState = {
+        id: uuidv4(), axleId: uuidv4(), type: motorType, x: motorX, y: motorY, rotation: 0, connectedTo: [],
+        isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 200, motorDirection: 1, 
+        load: 0, ratio: 1, rpm: 60, torque: 200, direction: 1, speed: 1, isJammed: false, isStalled: false
+    };
+    generatedGears.push(motorGear);
+
+    // 3. Build Train
+    let currentGear = motorGear;
+    let currentHoleIdx = startIdx;
+
+    // Available gear types
+    const types = Object.values(GearType);
+
+    for (let i = 0; i < 4; i++) {
+        // Chance to stack (Compound) if not first
+        if (i > 0 && Math.random() > 0.6) {
+            const stackType = GearType.Small; // Usually stack down to small to drive big
+            const stackGear: GearState = {
+                id: uuidv4(), axleId: currentGear.axleId, type: stackType, 
+                x: currentGear.x, y: currentGear.y, rotation: currentGear.rotation, 
+                connectedTo: [], isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 200, motorDirection: 1,
+                load: 0, ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+            };
+            generatedGears.push(stackGear);
+            currentGear = stackGear; // Continue from this one
+        }
+
+        const r1 = GEAR_DEFS[currentGear.type].radius;
+        
+        // Find a valid next gear
+        const validOptions = types.filter(t => {
+            const r2 = GEAR_DEFS[t].radius;
+            const dist = r1 + r2;
+            // Check if distance is multiple of 40 (HOLE_SPACING)
+            // Allow small epsilon for float math, though exact constants usually used
+            return Math.abs(dist % HOLE_SPACING) < 0.1;
+        });
+
+        if (validOptions.length === 0) break; // Dead end
+
+        const nextType = validOptions[Math.floor(Math.random() * validOptions.length)];
+        const r2 = GEAR_DEFS[nextType].radius;
+        const distHoles = Math.round((r1 + r2) / HOLE_SPACING);
+        
+        const nextHoleIdx = currentHoleIdx + distHoles;
+        
+        // Check bounds
+        if (nextHoleIdx >= beamLen) break; // Off end of beam
+
+        const nextX = beam1.x + (nextHoleIdx * HOLE_SPACING);
+        const nextY = beam1.y;
+
+        if (isOverlapping(nextX, nextY, r2 * 0.8)) break; // Collision
+
+        // Calculate alignment angle (meshing)
+        // Current is at (x1,y1), Next is at (x2,y2). Angle is 0 (horizontal).
+        const N1 = GEAR_DEFS[currentGear.type].teeth;
+        const N2 = GEAR_DEFS[nextType].teeth;
+        const angleDeg = 0;
+        const theta1 = currentGear.rotation;
+        const ratio = N1 / N2;
+        const initialRot = (angleDeg - theta1) * ratio + angleDeg + 180 + (180/N2);
+
+        const nextGear: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: nextType, 
+            x: nextX, y: nextY, rotation: initialRot, 
+            connectedTo: [], isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 200, motorDirection: 1,
+            load: 0, ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+
+        generatedGears.push(nextGear);
+        currentGear = nextGear;
+        currentHoleIdx = nextHoleIdx;
+    }
+
     setGears(generatedGears);
     setBricks(generatedBricks);
     setBelts(generatedBelts);
-    updatePhysics(generatedGears, generatedBelts);
+    
+    // Trigger physics update
+    setTimeout(() => {
+        updatePhysics(generatedGears, generatedBelts);
+    }, 10);
+    
     setGlobalRpm(60);
     setView({ x: 0, y: 0, scale: 0.8 });
   };
@@ -1395,7 +1480,7 @@ const App: React.FC = () => {
       
       <div className="flex-1 flex flex-col relative">
         {/* Toolbar */}
-        <div id="toolbar-controls" className="absolute top-6 left-6 z-10 flex flex-col gap-4 pointer-events-none">
+        <div id="toolbar-controls" className="absolute top-6 left-6 z-30 flex flex-col gap-4 pointer-events-none">
           <button 
             className="pointer-events-auto md:hidden w-12 h-12 bg-[var(--button-bg)] border-2 border-[var(--border-color)] rounded-xl flex items-center justify-center shadow-lg text-2xl text-[var(--text-accent)] hover:brightness-110 active:scale-95 transition-transform"
             onClick={() => setIsMobileToolbarOpen(!isMobileToolbarOpen)}

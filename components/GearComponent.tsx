@@ -1,4 +1,5 @@
 
+
 import React, { useMemo } from 'react';
 import { GearState } from '../types';
 import { GEAR_DEFS } from '../constants';
@@ -80,6 +81,10 @@ export const GearComponent: React.FC<GearProps> = ({
   if (theme === 'steam') glowColor = '#fecc00';
 
   let outlineColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.6)';
+  
+  if (theme === 'steam') {
+      outlineColor = '#fecc00'; // Brand Yellow outline for STEAM theme
+  }
 
   if (gear.isStalled) {
       glowColor = '#F87171'; 
@@ -135,7 +140,7 @@ export const GearComponent: React.FC<GearProps> = ({
             d={pathData} 
             fill="none" 
             stroke={outlineColor} 
-            strokeWidth="1.5" 
+            strokeWidth={theme === 'steam' ? "1" : "1.5"} 
             className="transition-colors duration-200"
             vectorEffect="non-scaling-stroke" 
         />
