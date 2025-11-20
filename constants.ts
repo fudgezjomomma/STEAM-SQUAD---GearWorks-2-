@@ -14,6 +14,21 @@ export const BRICK_CORNER_RADIUS = 17;
 export const BEAM_SIZES = [3, 5, 7, 9, 11, 13, 15]; // Odd numbers (Studless)
 export const BRICK_SIZES = [2, 4, 6, 8, 10, 12, 16]; // Even numbers (Studded)
 
+export const BRICK_THEME_COLORS = {
+    dark: {
+        beam: '#94A3B8', // Slate-400 (Light Blue-Grey)
+        brick: '#1E293B'  // Slate-800 (Deep Dark Blue) -> High Contrast
+    },
+    light: {
+        beam: '#E2E8F0', // Slate-200 (Almost White)
+        brick: '#475569'  // Slate-600 (Dark Grey) -> Classic Technic Look
+    },
+    steam: {
+        beam: '#27272A', // Zinc-800 (Dark Gray)
+        brick: '#FECC00'  // Brand Yellow -> Maximum Contrast
+    }
+};
+
 // Theme Palettes
 export const GEAR_DEFS: Record<GearType, GearDef> = {
   [GearType.Small]: {

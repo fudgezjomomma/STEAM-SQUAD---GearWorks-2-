@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { GearType } from '../types';
-import { GEAR_DEFS, BEAM_SIZES, BRICK_SIZES, HOLE_SPACING, BRICK_WIDTH } from '../constants';
+import { GEAR_DEFS, BEAM_SIZES, BRICK_SIZES, HOLE_SPACING, BRICK_WIDTH, BRICK_THEME_COLORS } from '../constants';
 import { generateGearPath } from '../utils/gearMath';
 import { CHALLENGES } from '../data/challenges';
 import { TRANSLATIONS, Language } from '../utils/translations';
@@ -37,9 +37,9 @@ const PreviewGear: React.FC<{ def: any, theme: 'dark' | 'light' | 'steam' }> = (
     );
 };
 
-const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick' }> = ({ length, type }) => {
+const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'dark' | 'light' | 'steam' }> = ({ length, type, theme }) => {
     const isBeam = type === 'beam';
-    const color = isBeam ? '#64748B' : '#475569';
+    const color = BRICK_THEME_COLORS[theme][type];
     
     // Correct logic mirroring BrickComponent
     const holeCount = isBeam ? length : Math.max(1, length - 1);
@@ -114,6 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
 
   return (
     <div 
+        id="sidebar-container"
         className="w-96 border-r flex flex-col shadow-2xl z-20 h-full transition-colors duration-300 flex-shrink-0"
         style={{ 
             backgroundColor: 'var(--bg-panel)', 
@@ -128,8 +129,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
         </h1>
         
         {/* Tabs */}
-        <div className="flex mt-6 p-1.5 rounded-xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)' }}>
+        <div id="sidebar-tabs" className="flex mt-6 p-1.5 rounded-xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)' }}>
           <button 
+            id="tab-parts"
             onClick={() => setActiveTab('parts')}
             className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
             style={{ 
@@ -140,6 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
             {t.partsTray}
           </button>
           <button 
+            id="tab-structure"
             onClick={() => setActiveTab('structure')}
             className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
             style={{ 
@@ -150,6 +153,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
             Structure
           </button>
           <button 
+            id="tab-missions"
             onClick={() => setActiveTab('missions')}
             className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
             style={{ 
@@ -209,7 +213,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                             onDragStart={(e) => onDragStart(e, JSON.stringify({ length: size, brickType: 'beam' }), 'brick')}
                             onClick={() => onAddBrick(size, 'beam')}
                         >
-                            <PreviewBrick length={size} type="beam" />
+                            <PreviewBrick length={size} type="beam" theme={theme} />
                             
                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
@@ -241,7 +245,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                             onDragStart={(e) => onDragStart(e, JSON.stringify({ length: size, brickType: 'brick' }), 'brick')}
                             onClick={() => onAddBrick(size, 'brick')}
                         >
-                            <PreviewBrick length={size} type="brick" />
+                            <PreviewBrick length={size} type="brick" theme={theme} />
                             
                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button

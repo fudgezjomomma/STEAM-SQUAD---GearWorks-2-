@@ -1,11 +1,12 @@
 
 import React from 'react';
 import { BrickState } from '../types';
-import { HOLE_SPACING, BRICK_WIDTH, BRICK_CORNER_RADIUS } from '../constants';
+import { HOLE_SPACING, BRICK_WIDTH, BRICK_CORNER_RADIUS, BRICK_THEME_COLORS } from '../constants';
 
 interface BrickProps {
   brick: BrickState;
   isSelected: boolean;
+  theme: 'dark' | 'light' | 'steam';
   onMouseDown: (e: React.MouseEvent, brickId: string) => void;
   onTouchStart: (e: React.TouchEvent, brickId: string) => void;
   onDoubleClick: (e: React.MouseEvent, brickId: string) => void;
@@ -15,6 +16,7 @@ interface BrickProps {
 export const BrickComponent: React.FC<BrickProps> = ({
   brick,
   isSelected,
+  theme,
   onMouseDown,
   onTouchStart,
   onDoubleClick,
@@ -47,7 +49,7 @@ export const BrickComponent: React.FC<BrickProps> = ({
   }
 
   const rectY = -BRICK_WIDTH / 2;
-  const displayColor = brick.color;
+  const displayColor = BRICK_THEME_COLORS[theme][brick.brickType];
   const transform = `translate(${brick.x} ${brick.y}) rotate(${brick.rotation})`;
   
   // Stud Dimensions

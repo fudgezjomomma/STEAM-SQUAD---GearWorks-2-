@@ -36,6 +36,7 @@ export const TRANSLATIONS = {
     light: "Light",
     dark: "Dark",
     steam: "STEAM Squad",
+    help: "Help",
     
     // Mission Control
     mission: "MISSION",
@@ -75,7 +76,29 @@ export const TRANSLATIONS = {
     beltMode: "Select target gear to connect belt...",
     
     // Gear Labels
-    labelDrive: "DRIVE"
+    labelDrive: "DRIVE",
+
+    // Tutorial
+    tutorial: {
+      welcome: "Welcome to GearWorks!",
+      welcomeDesc: "Let's take a quick tour to get you building mechanical masterpieces in no time.",
+      sidebar: "Component Tray",
+      sidebarDesc: "Drag gears, beams, and bricks from here onto the workspace. Click tabs to switch between Parts, Structure, and Missions.",
+      workspace: "The Workspace",
+      workspaceDesc: "This is where you build. Pan by dragging the background. Zoom with the mouse wheel or buttons. Tap components to edit them.",
+      toolbar: "Controls & Visualization",
+      toolbarDesc: "Control simulation speed, zoom level, and toggle visual helpers like RPM labels, Torque values, and Role colors.",
+      example: "Need Inspiration?",
+      exampleDesc: "Click the 'Example' button to generate a random working machine instantly.",
+      missions: "Missions",
+      missionsDesc: "Test your skills! Open the Missions tab to solve engineering puzzles ranging from simple ratios to complex torque challenges.",
+      done: "You're Ready!",
+      doneDesc: "Start building now. Remember: If it jams, try checking your spacing!",
+      next: "Next",
+      back: "Back",
+      skip: "Skip Tour",
+      finish: "Let's Build!"
+    }
   },
   'zh-TW': {
     // App
@@ -110,6 +133,7 @@ export const TRANSLATIONS = {
     light: "亮色",
     dark: "暗色",
     steam: "STEAM 小隊",
+    help: "教學",
     
     // Mission Control
     mission: "任務",
@@ -149,6 +173,28 @@ export const TRANSLATIONS = {
     beltMode: "選擇目標齒輪以連接皮帶...",
 
     // Gear Labels
-    labelDrive: "驅動"
+    labelDrive: "驅動",
+
+    // Tutorial
+    tutorial: {
+      welcome: "歡迎來到 GearWorks!",
+      welcomeDesc: "讓我們快速導覽，幫助您立刻開始建造機械傑作。",
+      sidebar: "零件盤",
+      sidebarDesc: "從這裡拖曳齒輪、橫梁和積木到工作區。點擊標籤切換零件、結構和任務。",
+      workspace: "工作區",
+      workspaceDesc: "這是您的建造區域。拖曳背景可平移，滑鼠滾輪可縮放。點擊組件進行編輯。",
+      toolbar: "控制與視覺化",
+      toolbarDesc: "控制模擬速度、縮放級別，並切換 RPM 標籤、扭力值和角色顏色等視覺輔助工具。",
+      example: "需要靈感？",
+      exampleDesc: "點擊「範例」按鈕可立即生成一個隨機運作的機器。",
+      missions: "任務",
+      missionsDesc: "測試您的技能！打開任務標籤，解決從簡單比率到複雜扭力挑戰的工程難題。",
+      done: "準備就緒！",
+      doneDesc: "現在開始建造吧。記住：如果卡住了，請檢查您的間距！",
+      next: "下一步",
+      back: "上一步",
+      skip: "跳過導覽",
+      finish: "開始建造！"
+    }
   }
 };

@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { GearComponent } from './components/GearComponent';
 import { BrickComponent } from './components/BrickComponent';
 import { GearProperties } from './components/GearProperties';
+import { TutorialOverlay, TutorialStep } from './components/TutorialOverlay';
 import { GearState, GearType, Belt, BrickState } from './types';
 import { GEAR_DEFS, SNAP_THRESHOLD, BASE_SPEED_MULTIPLIER, HOLE_SPACING, BEAM_SIZES, BRICK_WIDTH } from './constants';
 import { getDistance, propagatePhysics, generateBeltPath } from './utils/gearMath';
@@ -46,6 +47,9 @@ const App: React.FC = () => {
   // Language State
   const [lang, setLang] = useState<Language>('en');
   const t = TRANSLATIONS[lang];
+
+  // Tutorial State
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
   // View Transform State (Zoom/Pan)
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
@@ -572,8 +576,7 @@ const App: React.FC = () => {
           brickType: type,
           x: snappedX,
           y: snappedY,
-          rotation: 0,
-          color: type === 'beam' ? '#64748B' : '#475569' 
+          rotation: 0
       };
       setBricks([...bricks, newBrick]);
       audioManager.playSnap();
@@ -1065,7 +1068,7 @@ const App: React.FC = () => {
 
     const beam1Len = BEAM_SIZES[Math.floor(Math.random() * BEAM_SIZES.length)];
     const beam1: BrickState = {
-        id: uuidv4(), length: beam1Len, brickType: 'beam', x: cx - (beam1Len/2 * HOLE_SPACING), y: cy, rotation: 0, color: '#64748B'
+        id: uuidv4(), length: beam1Len, brickType: 'beam', x: cx - (beam1Len/2 * HOLE_SPACING), y: cy, rotation: 0
     };
     generatedBricks.push(beam1);
 
@@ -1111,7 +1114,7 @@ const App: React.FC = () => {
     if (Math.random() > 0.4) {
         const vBeamLen = [3, 5, 7, 9][Math.floor(Math.random()*4)]; 
         const vBeam: BrickState = {
-            id: uuidv4(), length: vBeamLen, brickType: 'beam', x: lastGear.x, y: lastGear.y, rotation: 90, color: '#475569'
+            id: uuidv4(), length: vBeamLen, brickType: 'beam', x: lastGear.x, y: lastGear.y, rotation: 90
         };
         generatedBricks.push(vBeam);
         
@@ -1142,7 +1145,7 @@ const App: React.FC = () => {
     if (Math.random() > 0.5) {
         const bx = cx + (Math.random() > 0.5 ? 200 : -200);
         const by = cy + 100;
-        const bBrick: BrickState = { id: uuidv4(), length: 5, brickType: 'beam', x: bx-20, y: by, rotation: 0, color: '#64748B' };
+        const bBrick: BrickState = { id: uuidv4(), length: 5, brickType: 'beam', x: bx-20, y: by, rotation: 0 };
         generatedBricks.push(bBrick);
         
         const bGear = addGear(GearType.Large, bx + 20, by, undefined, false, 0);
@@ -1223,11 +1226,34 @@ const App: React.FC = () => {
   const currentChallenge = CHALLENGES.find(c => c.id === activeChallengeId);
   const isLastChallenge = currentChallenge?.id === CHALLENGES[CHALLENGES.length - 1].id;
 
+  const tutorialSteps: TutorialStep[] = [
+      { title: t.tutorial.welcome, description: t.tutorial.welcomeDesc, position: 'center' },
+      { targetId: 'sidebar-container', title: t.tutorial.sidebar, description: t.tutorial.sidebarDesc, position: 'right' },
+      { targetId: 'workspace-area', title: t.tutorial.workspace, description: t.tutorial.workspaceDesc, position: 'center' },
+      { targetId: 'toolbar-controls', title: t.tutorial.toolbar, description: t.tutorial.toolbarDesc, position: 'bottom' },
+      { targetId: 'btn-example', title: t.tutorial.example, description: t.tutorial.exampleDesc, position: 'right' },
+      { targetId: 'sidebar-tabs', title: t.tutorial.missions, description: t.tutorial.missionsDesc, position: 'right' },
+      { title: t.tutorial.done, description: t.tutorial.doneDesc, position: 'center' },
+  ];
+
   return (
     <div className="flex h-screen w-screen overflow-hidden select-none transition-colors duration-300" style={{ backgroundColor: 'var(--bg-app)' }}>
       
+      <TutorialOverlay 
+          steps={tutorialSteps} 
+          isOpen={isTutorialOpen} 
+          onClose={() => setIsTutorialOpen(false)} 
+          lang={lang}
+      />
+
       {/* LANGUAGE & SOUND SWITCHER - BOTTOM RIGHT */}
       <div className="absolute bottom-6 right-6 z-50 flex gap-3">
+        <button 
+            onClick={() => setIsTutorialOpen(true)}
+            className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-colors text-xl shadow-lg hover:scale-105 active:scale-95 font-bold"
+            style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}
+            title={t.help}
+        >?</button>
         <button 
             onClick={toggleTheme}
             className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-colors text-xl shadow-lg hover:scale-105 active:scale-95"
@@ -1262,12 +1288,12 @@ const App: React.FC = () => {
       
       <div className="flex-1 flex flex-col relative">
         {/* Improved Toolbar */}
-        <div className="absolute top-6 left-6 z-10 flex flex-col gap-4 pointer-events-none">
+        <div id="toolbar-controls" className="absolute top-6 left-6 z-10 flex flex-col gap-4 pointer-events-none">
           
           <div className="pointer-events-auto flex flex-col sm:flex-row gap-4 items-start sm:items-center">
             <div className="flex gap-3 backdrop-blur-md p-3 rounded-2xl shadow-xl border-2" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
                 <button onClick={resetPlayground} className="px-5 py-3 border-2 rounded-xl hover:opacity-80 text-sm font-bold transition-colors shadow-sm uppercase tracking-wide" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>{t.reset}</button>
-                <button onClick={generateRandomLayout} className="px-5 py-3 border-2 rounded-xl hover:opacity-80 text-sm font-bold transition-colors shadow-sm uppercase tracking-wide" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>🎲 {t.example}</button>
+                <button id="btn-example" onClick={generateRandomLayout} className="px-5 py-3 border-2 rounded-xl hover:opacity-80 text-sm font-bold transition-colors shadow-sm uppercase tracking-wide" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>🎲 {t.example}</button>
             </div>
 
             <div className="flex gap-2 backdrop-blur-md p-3 rounded-2xl shadow-xl border-2" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
@@ -1329,6 +1355,7 @@ const App: React.FC = () => {
 
         {/* Workspace */}
         <div 
+          id="workspace-area"
           ref={workspaceRef}
           className={`flex-1 relative overflow-hidden`}
           style={{ 
@@ -1364,6 +1391,7 @@ const App: React.FC = () => {
                         key={brick.id}
                         brick={brick}
                         isSelected={selectedBrickId === brick.id}
+                        theme={theme}
                         onMouseDown={handleBrickMouseDown}
                         onTouchStart={handleBrickTouchStart}
                         onDoubleClick={rotateBrick}

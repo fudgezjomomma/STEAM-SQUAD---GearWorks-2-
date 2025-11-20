@@ -65,7 +65,6 @@ export interface BrickState {
   x: number;
   y: number;
   rotation: number; // 0, 90, 180, 270
-  color: string;
 }
 
 export interface DragItem {
