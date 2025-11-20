@@ -1,4 +1,8 @@
 
+
+
+
+
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Sidebar } from './components/Sidebar';
@@ -6,7 +10,7 @@ import { GearComponent } from './components/GearComponent';
 import { BrickComponent } from './components/BrickComponent';
 import { GearProperties } from './components/GearProperties';
 import { TutorialOverlay, TutorialStep } from './components/TutorialOverlay';
-import { GearState, GearType, Belt, BrickState } from './types';
+import { GearState, GearType, Belt, BrickState, Lesson } from './types';
 import { GEAR_DEFS, SNAP_THRESHOLD, BASE_SPEED_MULTIPLIER, HOLE_SPACING, BEAM_SIZES, BRICK_WIDTH } from './constants';
 import { getDistance, propagatePhysics, generateBeltPath } from './utils/gearMath';
 import { CHALLENGES } from './data/challenges';
@@ -50,6 +54,7 @@ const App: React.FC = () => {
 
   // Tutorial State
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [currentTutorialSteps, setCurrentTutorialSteps] = useState<TutorialStep[]>([]);
 
   // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
@@ -79,6 +84,18 @@ const App: React.FC = () => {
 
   const workspaceRef = useRef<HTMLDivElement>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Default App Tour Steps
+  const defaultTutorialSteps: TutorialStep[] = [
+      { title: t.tutorial.welcome, description: t.tutorial.welcomeDesc, position: 'center' },
+      { targetId: 'sidebar-container', title: t.tutorial.sidebar, description: t.tutorial.sidebarDesc, position: 'right' },
+      { targetId: 'workspace-area', title: t.tutorial.workspace, description: t.tutorial.workspaceDesc, position: 'center' },
+      { targetId: 'toolbar-controls', title: t.tutorial.toolbar, description: t.tutorial.toolbarDesc, position: 'bottom' },
+      { targetId: 'btn-example', title: t.tutorial.example, description: t.tutorial.exampleDesc, position: 'right' },
+      { targetId: 'tab-missions', title: t.tutorial.missions, description: t.tutorial.missionsDesc, position: 'right' },
+      { targetId: 'tab-lessons', title: t.tutorial.lessons, description: t.tutorial.lessonsDesc, position: 'right' },
+      { title: t.tutorial.done, description: t.tutorial.doneDesc, position: 'center' },
+  ];
 
   // --- Handle Resize ---
   useEffect(() => {
@@ -1248,6 +1265,54 @@ const App: React.FC = () => {
           // Usually safer to keep existing unless they explicitly hit reset.
       }
   };
+  
+  const handleStartLesson = (lesson: Lesson) => {
+      // 1. Clear board
+      setActiveChallengeId(null);
+      setGears([]); setBelts([]); setBricks([]);
+      
+      // 2. Load Preset
+      const preset = lesson.preset();
+      setGears(preset.gears);
+      setBricks(preset.bricks);
+      setBelts(preset.belts);
+      
+      // 3. Force Physics Update
+      setTimeout(() => {
+           const connected = recalculateConnections(preset.gears);
+           const calculated = propagatePhysics(connected, preset.belts);
+           setGears(calculated);
+      }, 10);
+      
+      // 4. Convert LessonSteps to TutorialSteps and Start
+      const steps: TutorialStep[] = lesson.steps.map(s => ({
+          targetId: s.targetId,
+          title: lang === 'zh-TW' ? s.titleZh : s.title,
+          description: lang === 'zh-TW' ? s.descriptionZh : s.description,
+          position: s.position
+      }));
+      
+      setCurrentTutorialSteps(steps);
+      setIsTutorialOpen(true);
+      
+      // Close sidebar on mobile if open
+      if (window.innerWidth < 768) setIsSidebarOpen(false);
+  };
+  
+  const handleTutorialClose = () => {
+      setIsTutorialOpen(false);
+      // Reset to default tour for the Help button
+      setTimeout(() => {
+          setCurrentTutorialSteps(defaultTutorialSteps);
+      }, 500);
+  };
+  
+  // Initialize default tutorial steps
+  useEffect(() => {
+      if (currentTutorialSteps.length === 0) {
+          setCurrentTutorialSteps(defaultTutorialSteps);
+      }
+  }, []);
 
   const getGearRole = (gear: GearState): 'drive' | 'driven' | 'idler' | null => {
     if (!showRoles) return null;
@@ -1294,30 +1359,20 @@ const App: React.FC = () => {
   const currentChallenge = CHALLENGES.find(c => c.id === activeChallengeId);
   const isLastChallenge = currentChallenge?.id === CHALLENGES[CHALLENGES.length - 1].id;
 
-  const tutorialSteps: TutorialStep[] = [
-      { title: t.tutorial.welcome, description: t.tutorial.welcomeDesc, position: 'center' },
-      { targetId: 'sidebar-container', title: t.tutorial.sidebar, description: t.tutorial.sidebarDesc, position: 'right' },
-      { targetId: 'workspace-area', title: t.tutorial.workspace, description: t.tutorial.workspaceDesc, position: 'center' },
-      { targetId: 'toolbar-controls', title: t.tutorial.toolbar, description: t.tutorial.toolbarDesc, position: 'bottom' },
-      { targetId: 'btn-example', title: t.tutorial.example, description: t.tutorial.exampleDesc, position: 'right' },
-      { targetId: 'sidebar-tabs', title: t.tutorial.missions, description: t.tutorial.missionsDesc, position: 'right' },
-      { title: t.tutorial.done, description: t.tutorial.doneDesc, position: 'center' },
-  ];
-
   return (
     <div className="flex h-screen w-screen overflow-hidden select-none transition-colors duration-300" style={{ backgroundColor: 'var(--bg-app)' }}>
       
       <TutorialOverlay 
-          steps={tutorialSteps} 
+          steps={currentTutorialSteps} 
           isOpen={isTutorialOpen} 
-          onClose={() => setIsTutorialOpen(false)} 
+          onClose={handleTutorialClose} 
           lang={lang}
       />
 
       {/* LANGUAGE & SOUND SWITCHER - BOTTOM RIGHT */}
       <div className="absolute bottom-6 right-6 z-50 flex gap-3">
         <button 
-            onClick={() => setIsTutorialOpen(true)}
+            onClick={() => { setCurrentTutorialSteps(defaultTutorialSteps); setIsTutorialOpen(true); }}
             className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-colors text-xl shadow-lg hover:scale-105 active:scale-95 font-bold"
             style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}
             title={t.help}
@@ -1349,6 +1404,7 @@ const App: React.FC = () => {
         onAddBrick={handleAddBrickFromSidebar}
         activeChallengeId={activeChallengeId}
         onSelectChallenge={onSelectChallenge}
+        onStartLesson={handleStartLesson}
         completedChallenges={completedChallenges}
         lang={lang}
         theme={theme}
@@ -1457,6 +1513,21 @@ const App: React.FC = () => {
           onTouchEnd={handleWorkspaceTouchEnd}
           onTouchCancel={handleWorkspaceTouchEnd}
         >
+           {/* Company Logo Watermark Overlay */}
+           <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0">
+              <img 
+                  src="/logo.png" 
+                  alt="Company Logo" 
+                  className={`
+                      w-[40%] h-[40%] object-contain 
+                      transition-all duration-500
+                      ${theme === 'light' ? 'opacity-[0.05] mix-blend-multiply' : 'opacity-[0.05] mix-blend-screen'}
+                      grayscale
+                  `}
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+           </div>
+
            <svg className="w-full h-full block">
              <defs>
                 <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">

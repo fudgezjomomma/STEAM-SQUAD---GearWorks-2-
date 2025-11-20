@@ -115,6 +115,7 @@ export const GearComponent: React.FC<GearProps> = ({
 
   return (
     <g 
+      id={gear.id} // IMPORTANT for Tutorial Targeting
       style={positionStyle} 
       className="select-none group"
       onMouseDown={(e) => onMouseDown(e, gear.id)}

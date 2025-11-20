@@ -88,3 +88,22 @@ export interface Challenge {
   preset?: () => ChallengePreset; // Optional function to generate initial state
   check: (gears: GearState[]) => string[]; 
 }
+
+export interface LessonStep {
+  targetId?: string; // DOM ID to highlight.
+  title: string;
+  titleZh: string;
+  description: string;
+  descriptionZh: string;
+  position?: 'top' | 'bottom' | 'left' | 'right' | 'center';
+}
+
+export interface Lesson {
+  id: string;
+  title: string;
+  titleZh: string;
+  description: string;
+  descriptionZh: string;
+  preset: () => ChallengePreset;
+  steps: LessonStep[];
+}

@@ -1,9 +1,12 @@
 
+
+
 import React, { useMemo, useState } from 'react';
-import { GearType } from '../types';
+import { GearType, Lesson } from '../types';
 import { GEAR_DEFS, BEAM_SIZES, BRICK_SIZES, HOLE_SPACING, BRICK_WIDTH, BRICK_THEME_COLORS } from '../constants';
 import { generateGearPath } from '../utils/gearMath';
 import { CHALLENGES } from '../data/challenges';
+import { LESSONS } from '../data/lessons';
 import { TRANSLATIONS, Language } from '../utils/translations';
 
 interface SidebarProps {
@@ -12,6 +15,7 @@ interface SidebarProps {
   onAddBrick: (length: number, type: 'beam' | 'brick') => void;
   activeChallengeId: number | null;
   onSelectChallenge: (id: number | null) => void;
+  onStartLesson: (lesson: Lesson) => void;
   completedChallenges: number[];
   lang: Language;
   theme: 'dark' | 'light' | 'steam';
@@ -110,8 +114,8 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'd
     );
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddBrick, activeChallengeId, onSelectChallenge, completedChallenges, lang, theme, isOpen, onToggle }) => {
-  const [activeTab, setActiveTab] = useState<'parts' | 'structure' | 'missions'>('parts');
+export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddBrick, activeChallengeId, onSelectChallenge, onStartLesson, completedChallenges, lang, theme, isOpen, onToggle }) => {
+  const [activeTab, setActiveTab] = useState<'parts' | 'structure' | 'missions' | 'lessons'>('parts');
   const t = TRANSLATIONS[lang];
 
   return (
@@ -128,9 +132,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
             className={`fixed z-50 top-1/2 -translate-y-1/2 transition-all duration-300 flex items-center justify-center w-8 h-20 bg-[var(--bg-panel)] border border-[var(--border-color)] border-l-0 rounded-r-xl shadow-xl hover:bg-[var(--bg-app)] text-[var(--text-accent)] font-bold text-xl focus:outline-none`}
             style={{ 
                 left: isOpen ? 'var(--sidebar-width, 24rem)' : '0',
-                // On mobile, when open, sidebar width is dynamic (85vw), so we need JS or careful CSS.
-                // We'll override this with a class based approach for smoother simple transitions.
-                // Actually, rely on the transform of a container if possible, but fixed positioning is safer.
             }}
         >
             {isOpen ? '‹' : '›'}
@@ -143,12 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                 bg-[var(--bg-panel)] border-r border-[var(--border-color)] text-[var(--text-primary)]
                 ${isOpen ? 'translate-x-0 w-[85vw] sm:w-96' : '-translate-x-full w-[85vw] sm:w-96 md:translate-x-0 md:w-0 md:border-r-0 md:overflow-hidden'}
             `}
-            style={{
-                // Helper var for the toggle button if we used CSS vars, but we are using the class logic above.
-                // We update the toggle button position via a separate style block below or inline.
-            }}
         >
-            {/* CSS for Toggle Button Position Sync */}
             <style>{`
                 button[class*='fixed z-50'] {
                     left: ${isOpen ? (window.innerWidth < 768 ? '85vw' : '24rem') : '0'} !important;
@@ -171,40 +167,51 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                 <button onClick={onToggle} className="md:hidden p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
             </div>
             
-            {/* Tabs */}
-            <div id="sidebar-tabs" className="flex mt-6 p-1.5 rounded-xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)' }}>
+            {/* Tabs - 2 Column Grid */}
+            <div id="sidebar-tabs" className="grid grid-cols-2 gap-2 mt-6 p-1.5 rounded-xl border" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)' }}>
               <button 
                 id="tab-parts"
                 onClick={() => setActiveTab('parts')}
-                className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
+                className={`py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-center`}
                 style={{ 
                     backgroundColor: activeTab === 'parts' ? 'var(--text-accent)' : 'transparent',
                     color: activeTab === 'parts' ? '#fff' : 'var(--text-secondary)'
                 }}
               >
-                {t.partsTray}
+                {t.tabGears}
               </button>
               <button 
                 id="tab-structure"
                 onClick={() => setActiveTab('structure')}
-                className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
+                className={`py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-center`}
                 style={{ 
                     backgroundColor: activeTab === 'structure' ? 'var(--text-accent)' : 'transparent',
                     color: activeTab === 'structure' ? '#fff' : 'var(--text-secondary)'
                 }}
               >
-                Struct
+                {t.tabStructural}
               </button>
               <button 
                 id="tab-missions"
                 onClick={() => setActiveTab('missions')}
-                className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
+                className={`py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-center`}
                 style={{ 
                     backgroundColor: activeTab === 'missions' ? 'var(--text-accent)' : 'transparent',
                     color: activeTab === 'missions' ? '#fff' : 'var(--text-secondary)'
                 }}
               >
-                {t.missions} {completedChallenges.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-white/20 text-white rounded-full text-[10px]">{completedChallenges.length}</span>}
+                {t.tabChallenges}
+              </button>
+              <button 
+                id="tab-lessons"
+                onClick={() => setActiveTab('lessons')}
+                className={`py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-center`}
+                style={{ 
+                    backgroundColor: activeTab === 'lessons' ? 'var(--text-accent)' : 'transparent',
+                    color: activeTab === 'lessons' ? '#fff' : 'var(--text-secondary)'
+                }}
+              >
+                {t.tabLessons}
               </button>
             </div>
           </div>
@@ -222,16 +229,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                     onClick={() => onAddGear(def.type)}
                   >
                     <PreviewGear def={def} theme={theme} />
-                    
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110"
-                        style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }}
-                        onClick={(e) => { e.stopPropagation(); onAddGear(def.type); }}
-                        draggable={false}
-                      >
-                        {t.add}
-                      </button>
+                      <button className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110" style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }} onClick={(e) => { e.stopPropagation(); onAddGear(def.type); }} draggable={false}>{t.add}</button>
                     </div>
                   </div>
                   <span className="font-mono font-bold mt-4 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{def.teeth} {t.teeth}</span>
@@ -242,8 +241,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
 
           {activeTab === 'structure' && (
             <div className="flex-1 overflow-y-auto p-6 space-y-8 animate-in fade-in slide-in-from-left-4 duration-300 no-scrollbar">
-                
-                {/* Technic Beams */}
                 <div>
                     <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>Technic Beams (Odd)</p>
                     <div className="space-y-6">
@@ -257,16 +254,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                                 onClick={() => onAddBrick(size, 'beam')}
                             >
                                 <PreviewBrick length={size} type="beam" theme={theme} />
-                                
                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110"
-                                        style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }}
-                                        onClick={(e) => { e.stopPropagation(); onAddBrick(size, 'beam'); }}
-                                        draggable={false}
-                                    >
-                                        {t.add}
-                                    </button>
+                                    <button className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110" style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }} onClick={(e) => { e.stopPropagation(); onAddBrick(size, 'beam'); }} draggable={false}>{t.add}</button>
                                 </div>
                             </div>
                             <span className="font-mono font-bold mt-2 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{size}L Beam</span>
@@ -274,8 +263,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                     ))}
                     </div>
                 </div>
-
-                {/* Technic Bricks */}
                 <div>
                     <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 mt-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>Technic Bricks (Even)</p>
                     <div className="space-y-6">
@@ -289,16 +276,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                                 onClick={() => onAddBrick(size, 'brick')}
                             >
                                 <PreviewBrick length={size} type="brick" theme={theme} />
-                                
                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110"
-                                        style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }}
-                                        onClick={(e) => { e.stopPropagation(); onAddBrick(size, 'brick'); }}
-                                        draggable={false}
-                                    >
-                                        {t.add}
-                                    </button>
+                                    <button className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110" style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }} onClick={(e) => { e.stopPropagation(); onAddBrick(size, 'brick'); }} draggable={false}>{t.add}</button>
                                 </div>
                             </div>
                             <span className="font-mono font-bold mt-2 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{size} Stud Brick</span>
@@ -356,6 +335,35 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                  );
                })}
             </div>
+          )}
+
+          {activeTab === 'lessons' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 animate-in fade-in slide-in-from-right-4 duration-300 no-scrollbar" style={{ backgroundColor: 'var(--bg-panel)' }}>
+                   <p className="text-sm font-bold uppercase tracking-widest text-center mb-4 mt-2" style={{ color: 'var(--text-muted)' }}>{t.lessonLog}</p>
+                   {LESSONS.map(lesson => {
+                       const title = lang === 'zh-TW' ? lesson.titleZh : lesson.title;
+                       const desc = lang === 'zh-TW' ? lesson.descriptionZh : lesson.description;
+                       return (
+                           <div 
+                               key={lesson.id}
+                               className="p-5 rounded-2xl border-2 cursor-pointer transition-all relative overflow-hidden hover:bg-white/5"
+                               style={{ borderColor: 'var(--border-color)' }}
+                               onClick={() => onStartLesson(lesson)}
+                           >
+                               <div className="flex gap-3 items-center mb-2">
+                                    <div className="w-8 h-8 rounded-full flex items-center justify-center bg-cyan-900/50 text-cyan-400 font-bold text-xs border border-cyan-700">
+                                        {lesson.id.toUpperCase()}
+                                    </div>
+                                    <h3 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>{title}</h3>
+                               </div>
+                               <p className="text-sm leading-relaxed opacity-80 mb-4" style={{ color: 'var(--text-secondary)' }}>{desc}</p>
+                               <button className="w-full py-2 rounded-lg font-bold text-sm uppercase tracking-wide transition-colors bg-cyan-600 hover:bg-cyan-500 text-white">
+                                   {t.lessons.start}
+                               </button>
+                           </div>
+                       )
+                   })}
+              </div>
           )}
           
           <div className="p-4 border-t text-xs text-center font-medium opacity-60" style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>

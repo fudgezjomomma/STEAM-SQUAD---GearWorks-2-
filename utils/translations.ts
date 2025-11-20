@@ -1,5 +1,6 @@
 
 
+
 export type Language = 'en' | 'zh-TW';
 
 export const TRANSLATIONS = {
@@ -12,10 +13,17 @@ export const TRANSLATIONS = {
     add: "ADD",
     teeth: "TEETH",
     missionLog: "Mission Log",
+    lessonLog: "Mechanical Lessons",
     solved: "Solved",
     targeting: "Targeting...",
     missionAccomplished: "Mission Accomplished!",
     buildClubFooter: "BUILD CLUB ENGINEERING v1.0",
+    
+    // Tabs
+    tabGears: "Gears",
+    tabStructural: "Structural",
+    tabChallenges: "Challenges",
+    tabLessons: "Lessons",
     
     // Toolbar
     reset: "Reset",
@@ -83,21 +91,27 @@ export const TRANSLATIONS = {
       welcome: "Welcome to GearWorks!",
       welcomeDesc: "Let's take a quick tour to get you building mechanical masterpieces in no time.",
       sidebar: "Component Tray",
-      sidebarDesc: "Drag gears, beams, and bricks from here onto the workspace. Click tabs to switch between Parts, Structure, and Missions.",
+      sidebarDesc: "Drag gears, beams, and bricks from here onto the workspace.",
       workspace: "The Workspace",
       workspaceDesc: "This is where you build. Pan by dragging the background. Zoom with the mouse wheel or buttons. Tap components to edit them.",
       toolbar: "Controls & Visualization",
       toolbarDesc: "Control simulation speed, zoom level, and toggle visual helpers like RPM labels, Torque values, and Role colors.",
       example: "Need Inspiration?",
       exampleDesc: "Click the 'Example' button to generate a random working machine instantly.",
-      missions: "Missions",
-      missionsDesc: "Test your skills! Open the Missions tab to solve engineering puzzles ranging from simple ratios to complex torque challenges.",
+      missions: "Challenges",
+      missionsDesc: "Test your skills! Open the Challenges tab to solve engineering puzzles ranging from simple ratios to complex torque problems.",
+      lessons: "Interactive Lessons",
+      lessonsDesc: "New to mechanics? Try our guided lessons to learn about Ratios, Idlers, and Torque.",
       done: "You're Ready!",
       doneDesc: "Start building now. Remember: If it jams, try checking your spacing!",
       next: "Next",
       back: "Back",
       skip: "Skip Tour",
       finish: "Let's Build!"
+    },
+    
+    lessons: {
+       start: "Start Lesson"
     }
   },
   'zh-TW': {
@@ -109,10 +123,17 @@ export const TRANSLATIONS = {
     add: "加入",
     teeth: "齒",
     missionLog: "任務列表",
+    lessonLog: "機械課程",
     solved: "已完成",
     targeting: "目標鎖定中...",
     missionAccomplished: "任務完成！",
-    buildClubFooter: "BUILD CLUB 工程 v1.0",
+    buildClubFooter: "BUILD CLUB ENGINEERING v1.0",
+
+    // Tabs
+    tabGears: "齒輪",
+    tabStructural: "結構",
+    tabChallenges: "挑戰",
+    tabLessons: "課程",
     
     // Toolbar
     reset: "重置",
@@ -180,21 +201,27 @@ export const TRANSLATIONS = {
       welcome: "歡迎來到 GearWorks!",
       welcomeDesc: "讓我們快速導覽，幫助您立刻開始建造機械傑作。",
       sidebar: "零件盤",
-      sidebarDesc: "從這裡拖曳齒輪、橫梁和積木到工作區。點擊標籤切換零件、結構和任務。",
+      sidebarDesc: "從這裡拖曳齒輪、橫梁和積木到工作區。",
       workspace: "工作區",
       workspaceDesc: "這是您的建造區域。拖曳背景可平移，滑鼠滾輪可縮放。點擊組件進行編輯。",
       toolbar: "控制與視覺化",
       toolbarDesc: "控制模擬速度、縮放級別，並切換 RPM 標籤、扭力值和角色顏色等視覺輔助工具。",
       example: "需要靈感？",
       exampleDesc: "點擊「範例」按鈕可立即生成一個隨機運作的機器。",
-      missions: "任務",
-      missionsDesc: "測試您的技能！打開任務標籤，解決從簡單比率到複雜扭力挑戰的工程難題。",
+      missions: "挑戰",
+      missionsDesc: "測試您的技能！打開挑戰標籤，解決從簡單比率到複雜扭力挑戰的工程難題。",
+      lessons: "互動課程",
+      lessonsDesc: "機械新手？嘗試我們的引導課程，學習齒輪比、惰輪和扭力。",
       done: "準備就緒！",
       doneDesc: "現在開始建造吧。記住：如果卡住了，請檢查您的間距！",
       next: "下一步",
       back: "上一步",
       skip: "跳過導覽",
       finish: "開始建造！"
+    },
+    
+    lessons: {
+       start: "開始課程"
     }
   }
 };

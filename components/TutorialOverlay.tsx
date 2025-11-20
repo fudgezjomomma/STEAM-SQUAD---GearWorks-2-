@@ -20,6 +20,13 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen,
   const [rect, setRect] = useState<DOMRect | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Reset index when opening or when steps change to prevent out-of-bounds errors
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentStepIndex(0);
+    }
+  }, [isOpen, steps]);
+
   const step = steps[currentStepIndex];
   
   // Labels
@@ -29,7 +36,8 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen,
   const skipLabel = lang === 'zh-TW' ? "跳過" : "Skip";
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !step) return;
+
     const updateRect = () => {
       if (step.targetId) {
         const el = document.getElementById(step.targetId);
@@ -53,9 +61,10 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen,
       window.removeEventListener('resize', updateRect);
       clearTimeout(timeout);
     };
-  }, [currentStepIndex, isOpen, step.targetId]);
+  }, [currentStepIndex, isOpen, step]);
 
-  if (!isOpen) return null;
+  // Safety check: If step is undefined (e.g. index mismatch during transition), don't render
+  if (!isOpen || !step) return null;
 
   const handleNext = () => {
     if (currentStepIndex < steps.length - 1) {
