@@ -51,6 +51,12 @@ const App: React.FC = () => {
   // Tutorial State
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
+  // Sidebar State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
+  
+  // Mobile Toolbar State
+  const [isMobileToolbarOpen, setIsMobileToolbarOpen] = useState(false);
+
   // View Transform State (Zoom/Pan)
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
@@ -73,6 +79,18 @@ const App: React.FC = () => {
 
   const workspaceRef = useRef<HTMLDivElement>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // --- Handle Resize ---
+  useEffect(() => {
+    const handleResize = () => {
+        if (window.innerWidth >= 768 && !isSidebarOpen) {
+             // Optional: Auto-open on big screens if prefered
+             // setIsSidebarOpen(true);
+        }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isSidebarOpen]);
 
   // --- Theme Effect ---
   useEffect(() => {
@@ -1018,23 +1036,55 @@ const App: React.FC = () => {
       setSelectedBrickId(null);
   };
 
+  const loadChallengeState = (id: number) => {
+      const challenge = CHALLENGES.find(c => c.id === id);
+      setGears([]); setBelts([]); setBricks([]); setGlobalRpm(60);
+      
+      if (challenge && challenge.preset) {
+          const preset = challenge.preset();
+          setGears(preset.gears);
+          setBricks(preset.bricks);
+          setBelts(preset.belts);
+          
+          // Force a physics update on the loaded preset
+          setTimeout(() => {
+               const connected = recalculateConnections(preset.gears);
+               const calculated = propagatePhysics(connected, preset.belts);
+               setGears(calculated);
+          }, 10);
+      }
+  };
+
   const resetPlayground = () => {
     pushHistory(gears, belts, bricks);
-    setGears([]);
-    setBelts([]);
-    setBricks([]);
-    setSelectedId(null);
-    setSelectedBrickId(null);
-    setGlobalRpm(60);
-    setActiveChallengeId(null);
-    setHighlightedGearIds([]);
-    setChallengeSuccess(false);
-    setView({ x: 0, y: 0, scale: 1 });
+    
+    if (activeChallengeId) {
+        // Reload current challenge
+        loadChallengeState(activeChallengeId);
+        setChallengeSuccess(false);
+        setHighlightedGearIds([]);
+        setSelectedId(null);
+    } else {
+        // Wipe clean
+        setGears([]);
+        setBelts([]);
+        setBricks([]);
+        setSelectedId(null);
+        setSelectedBrickId(null);
+        setGlobalRpm(60);
+        setActiveChallengeId(null);
+        setHighlightedGearIds([]);
+        setChallengeSuccess(false);
+        setView({ x: 0, y: 0, scale: 1 });
+    }
   };
 
   const generateRandomLayout = () => {
     pushHistory(gears, belts, bricks);
     
+    // Leave challenge mode if active
+    setActiveChallengeId(null);
+
     const generatedGears: GearState[] = [];
     const generatedBricks: BrickState[] = [];
     const generatedBelts: Belt[] = [];
@@ -1177,8 +1227,26 @@ const App: React.FC = () => {
     if (!activeChallengeId) return;
     const currentIndex = CHALLENGES.findIndex(c => c.id === activeChallengeId);
     const nextChallenge = CHALLENGES[currentIndex + 1];
+    
     setGears([]); setBelts([]); setBricks([]); setSelectedId(null); setHighlightedGearIds([]); setChallengeSuccess(false);
-    setActiveChallengeId(nextChallenge ? nextChallenge.id : null);
+    
+    if (nextChallenge) {
+        setActiveChallengeId(nextChallenge.id);
+        loadChallengeState(nextChallenge.id);
+    } else {
+        setActiveChallengeId(null);
+    }
+  };
+
+  const onSelectChallenge = (id: number | null) => {
+      setActiveChallengeId(id);
+      setChallengeSuccess(false);
+      if (id) {
+          loadChallengeState(id);
+      } else {
+          // Returning to free play, clear board? or keep?
+          // Usually safer to keep existing unless they explicitly hit reset.
+      }
   };
 
   const getGearRole = (gear: GearState): 'drive' | 'driven' | 'idler' | null => {
@@ -1280,77 +1348,94 @@ const App: React.FC = () => {
         onAddGear={handleAddGearFromSidebar}
         onAddBrick={handleAddBrickFromSidebar}
         activeChallengeId={activeChallengeId}
-        onSelectChallenge={(id) => { setActiveChallengeId(id); setChallengeSuccess(false); }}
+        onSelectChallenge={onSelectChallenge}
         completedChallenges={completedChallenges}
         lang={lang}
         theme={theme}
+        isOpen={isSidebarOpen}
+        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
       />
       
       <div className="flex-1 flex flex-col relative">
-        {/* Improved Toolbar */}
+        {/* Improved Toolbar with Mobile Collapse */}
         <div id="toolbar-controls" className="absolute top-6 left-6 z-10 flex flex-col gap-4 pointer-events-none">
           
-          <div className="pointer-events-auto flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <div className="flex gap-3 backdrop-blur-md p-3 rounded-2xl shadow-xl border-2" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
-                <button onClick={resetPlayground} className="px-5 py-3 border-2 rounded-xl hover:opacity-80 text-sm font-bold transition-colors shadow-sm uppercase tracking-wide" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>{t.reset}</button>
-                <button id="btn-example" onClick={generateRandomLayout} className="px-5 py-3 border-2 rounded-xl hover:opacity-80 text-sm font-bold transition-colors shadow-sm uppercase tracking-wide" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>🎲 {t.example}</button>
-            </div>
+          {/* Mobile Toggle Button */}
+          <button 
+            className="pointer-events-auto md:hidden w-12 h-12 bg-[var(--button-bg)] border-2 border-[var(--border-color)] rounded-xl flex items-center justify-center shadow-lg text-2xl text-[var(--text-accent)] hover:brightness-110 active:scale-95 transition-transform"
+            onClick={() => setIsMobileToolbarOpen(!isMobileToolbarOpen)}
+          >
+            {isMobileToolbarOpen ? '✕' : '⚙️'}
+          </button>
 
-            <div className="flex gap-2 backdrop-blur-md p-3 rounded-2xl shadow-xl border-2" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
-                <button onClick={() => setView(v => ({ ...v, scale: Math.min(4, v.scale + 0.2) }))} className="w-12 h-12 flex items-center justify-center rounded-xl border-2 hover:bg-white/10 text-2xl font-bold" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>+</button>
-                <button onClick={() => setView(v => ({ ...v, scale: Math.max(0.2, v.scale - 0.2) }))} className="w-12 h-12 flex items-center justify-center rounded-xl border-2 hover:bg-white/10 text-2xl font-bold" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>-</button>
-                <button onClick={() => setView({ x: 0, y: 0, scale: 1 })} className="px-4 h-12 flex items-center justify-center rounded-xl border-2 hover:bg-white/10 text-sm font-bold uppercase" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>{t.fit}</button>
-            </div>
-          </div>
+          {/* Controls Container - Hidden on mobile unless open */}
+          <div className={`
+            flex flex-col gap-4 transition-all duration-300 origin-top-left
+            ${isMobileToolbarOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-95 opacity-0 pointer-events-none h-0 overflow-hidden md:scale-100 md:opacity-100 md:pointer-events-auto md:h-auto md:overflow-visible'}
+          `}>
 
-          <div className="pointer-events-auto backdrop-blur-md p-4 rounded-2xl shadow-xl border-2 max-w-[300px] sm:max-w-none" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
-             <div className="flex flex-wrap items-center gap-6 mb-3">
-                <div className="flex items-center gap-3 flex-1 min-w-[150px]">
-                    <label htmlFor="global-rpm" className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{t.rpm}</label>
-                    <input id="global-rpm" type="range" min="1" max="300" step="1" value={globalRpm} onChange={handleGlobalRpmChange} className="kid-slider accent-cyan-500" />
-                    <span className="text-sm font-mono font-bold w-12 text-right" style={{ color: 'var(--text-accent)' }}>{globalRpm}</span>
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center pointer-events-auto">
+                <div className="flex gap-3 backdrop-blur-md p-3 rounded-2xl shadow-xl border-2" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
+                    <button onClick={resetPlayground} className="px-5 py-3 border-2 rounded-xl hover:opacity-80 text-sm font-bold transition-colors shadow-sm uppercase tracking-wide" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>{t.reset}</button>
+                    <button id="btn-example" onClick={generateRandomLayout} className="px-5 py-3 border-2 rounded-xl hover:opacity-80 text-sm font-bold transition-colors shadow-sm uppercase tracking-wide" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>🎲 {t.example}</button>
                 </div>
-             </div>
-             <div className="w-full h-px my-2 bg-gray-700/50"></div>
-             <div className="flex flex-wrap gap-4">
-                <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                    <input type="checkbox" checked={showSpecs} onChange={(e) => setShowSpecs(e.target.checked)} className="peer sr-only" />
-                    <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showSpecs ? 'var(--text-accent)' : 'var(--border-color)', borderColor: showSpecs ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
-                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showSpecs ? 'translate-x-3' : ''}`}></div>
-                    </div>
-                    <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showSpecs ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.specs}</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                    <input type="checkbox" checked={showRatio} onChange={(e) => setShowRatio(e.target.checked)} className="peer sr-only" />
-                     <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showRatio ? 'var(--text-accent)' : 'var(--border-color)', borderColor: showRatio ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
-                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showRatio ? 'translate-x-3' : ''}`}></div>
-                     </div>
-                    <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRatio ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.ratio}</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                    <input type="checkbox" checked={showTorque} onChange={(e) => setShowTorque(e.target.checked)} className="peer sr-only" />
-                    <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showTorque ? '#a855f7' : 'var(--border-color)', borderColor: showTorque ? '#a855f7' : 'var(--text-secondary)' }}>
-                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showTorque ? 'translate-x-3' : ''}`}></div>
-                    </div>
-                    <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showTorque ? '#d8b4fe' : 'var(--text-muted)' }}>{t.torque}</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                    <input type="checkbox" checked={showRoles} onChange={(e) => setShowRoles(e.target.checked)} className="peer sr-only" />
-                    <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showRoles ? '#4ade80' : 'var(--border-color)', borderColor: showRoles ? '#4ade80' : 'var(--text-secondary)' }}>
-                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showRoles ? 'translate-x-3' : ''}`}></div>
-                    </div>
-                    <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRoles ? '#4ade80' : 'var(--text-muted)' }}>{t.roles}</span>
-                </label>
-             </div>
-          </div>
-          
-          {beltSourceId && (
-            <div className="pointer-events-auto w-full max-w-sm bg-purple-600/90 border-2 border-purple-400 text-white text-base font-bold px-6 py-4 rounded-2xl shadow-2xl animate-pulse text-center">
-                {t.beltMode}
-                <div className="text-xs opacity-80 mt-1 font-normal">(Tap target gear or ESC)</div>
-            </div>
-          )}
 
+                <div className="flex gap-2 backdrop-blur-md p-3 rounded-2xl shadow-xl border-2" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
+                    <button onClick={() => setView(v => ({ ...v, scale: Math.min(4, v.scale + 0.2) }))} className="w-12 h-12 flex items-center justify-center rounded-xl border-2 hover:bg-white/10 text-2xl font-bold" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>+</button>
+                    <button onClick={() => setView(v => ({ ...v, scale: Math.max(0.2, v.scale - 0.2) }))} className="w-12 h-12 flex items-center justify-center rounded-xl border-2 hover:bg-white/10 text-2xl font-bold" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>-</button>
+                    <button onClick={() => setView({ x: 0, y: 0, scale: 1 })} className="px-4 h-12 flex items-center justify-center rounded-xl border-2 hover:bg-white/10 text-sm font-bold uppercase" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>{t.fit}</button>
+                </div>
+            </div>
+
+            <div className="pointer-events-auto backdrop-blur-md p-4 rounded-2xl shadow-xl border-2 max-w-[300px] sm:max-w-none" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
+                <div className="flex flex-wrap items-center gap-6 mb-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-[150px]">
+                        <label htmlFor="global-rpm" className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{t.rpm}</label>
+                        <input id="global-rpm" type="range" min="1" max="300" step="1" value={globalRpm} onChange={handleGlobalRpmChange} className="kid-slider accent-cyan-500" />
+                        <span className="text-sm font-mono font-bold w-12 text-right" style={{ color: 'var(--text-accent)' }}>{globalRpm}</span>
+                    </div>
+                </div>
+                <div className="w-full h-px my-2 bg-gray-700/50"></div>
+                <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
+                        <input type="checkbox" checked={showSpecs} onChange={(e) => setShowSpecs(e.target.checked)} className="peer sr-only" />
+                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showSpecs ? 'var(--text-accent)' : 'var(--border-color)', borderColor: showSpecs ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
+                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showSpecs ? 'translate-x-3' : ''}`}></div>
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showSpecs ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.specs}</span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
+                        <input type="checkbox" checked={showRatio} onChange={(e) => setShowRatio(e.target.checked)} className="peer sr-only" />
+                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showRatio ? 'var(--text-accent)' : 'var(--border-color)', borderColor: showRatio ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
+                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showRatio ? 'translate-x-3' : ''}`}></div>
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRatio ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.ratio}</span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
+                        <input type="checkbox" checked={showTorque} onChange={(e) => setShowTorque(e.target.checked)} className="peer sr-only" />
+                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showTorque ? '#a855f7' : 'var(--border-color)', borderColor: showTorque ? '#a855f7' : 'var(--text-secondary)' }}>
+                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showTorque ? 'translate-x-3' : ''}`}></div>
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showTorque ? '#d8b4fe' : 'var(--text-muted)' }}>{t.torque}</span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
+                        <input type="checkbox" checked={showRoles} onChange={(e) => setShowRoles(e.target.checked)} className="peer sr-only" />
+                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showRoles ? '#4ade80' : 'var(--border-color)', borderColor: showRoles ? '#4ade80' : 'var(--text-secondary)' }}>
+                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showRoles ? 'translate-x-3' : ''}`}></div>
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRoles ? '#4ade80' : 'var(--text-muted)' }}>{t.roles}</span>
+                    </label>
+                </div>
+            </div>
+          
+            {beltSourceId && (
+                <div className="pointer-events-auto w-full max-w-sm bg-purple-600/90 border-2 border-purple-400 text-white text-base font-bold px-6 py-4 rounded-2xl shadow-2xl animate-pulse text-center">
+                    {t.beltMode}
+                    <div className="text-xs opacity-80 mt-1 font-normal">(Tap target gear or ESC)</div>
+                </div>
+            )}
+
+          </div>
         </div>
 
         {/* Workspace */}

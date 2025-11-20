@@ -15,6 +15,8 @@ interface SidebarProps {
   completedChallenges: number[];
   lang: Language;
   theme: 'dark' | 'light' | 'steam';
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
 const PreviewGear: React.FC<{ def: any, theme: 'dark' | 'light' | 'steam' }> = ({ def, theme }) => {
@@ -108,216 +110,258 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'd
     );
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddBrick, activeChallengeId, onSelectChallenge, completedChallenges, lang, theme }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddBrick, activeChallengeId, onSelectChallenge, completedChallenges, lang, theme, isOpen, onToggle }) => {
   const [activeTab, setActiveTab] = useState<'parts' | 'structure' | 'missions'>('parts');
   const t = TRANSLATIONS[lang];
 
   return (
-    <div 
-        id="sidebar-container"
-        className="w-96 border-r flex flex-col shadow-2xl z-20 h-full transition-colors duration-300 flex-shrink-0"
-        style={{ 
-            backgroundColor: 'var(--bg-panel)', 
-            borderColor: 'var(--border-color)',
-            color: 'var(--text-primary)'
-        }}
-    >
-      <div className="p-6 border-b pb-6" style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}>
-        <h1 className="text-2xl font-bold flex items-center gap-3 tracking-tight" style={{ color: 'var(--text-accent)' }}>
-          <span className="text-3xl">⚙️</span> 
-          <span>{t.appTitle}</span>
-        </h1>
-        
-        {/* Tabs */}
-        <div id="sidebar-tabs" className="flex mt-6 p-1.5 rounded-xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)' }}>
-          <button 
-            id="tab-parts"
-            onClick={() => setActiveTab('parts')}
-            className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
-            style={{ 
-                backgroundColor: activeTab === 'parts' ? 'var(--text-accent)' : 'transparent',
-                color: activeTab === 'parts' ? '#fff' : 'var(--text-secondary)'
-            }}
-          >
-            {t.partsTray}
-          </button>
-          <button 
-            id="tab-structure"
-            onClick={() => setActiveTab('structure')}
-            className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
-            style={{ 
-                backgroundColor: activeTab === 'structure' ? 'var(--text-accent)' : 'transparent',
-                color: activeTab === 'structure' ? '#fff' : 'var(--text-secondary)'
-            }}
-          >
-            Structure
-          </button>
-          <button 
-            id="tab-missions"
-            onClick={() => setActiveTab('missions')}
-            className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
-            style={{ 
-                backgroundColor: activeTab === 'missions' ? 'var(--text-accent)' : 'transparent',
-                color: activeTab === 'missions' ? '#fff' : 'var(--text-secondary)'
-            }}
-          >
-            {t.missions} {completedChallenges.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-white/20 text-white rounded-full text-[10px]">{completedChallenges.length}</span>}
-          </button>
-        </div>
-      </div>
+    <>
+        {/* Mobile Backdrop */}
+        <div 
+            className={`fixed inset-0 bg-black/50 z-30 transition-opacity duration-300 md:hidden ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+            onClick={onToggle}
+        />
 
-      {activeTab === 'parts' && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-10 animate-in fade-in slide-in-from-left-4 duration-300 no-scrollbar">
-           <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>{t.componentTray}</p>
-          {Object.values(GEAR_DEFS).map((def) => (
-            <div key={def.type} className="flex flex-col items-center">
-              <div 
-                className="cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-8 rounded-full border-2 border-dashed hover:border-solid"
-                style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}
-                draggable={true}
-                onDragStart={(e) => onDragStart(e, def.type, 'gear')}
-                onClick={() => onAddGear(def.type)}
-              >
-                <PreviewGear def={def} theme={theme} />
-                
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110"
-                    style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }}
-                    onClick={(e) => { e.stopPropagation(); onAddGear(def.type); }}
-                    draggable={false}
-                  >
-                    {t.add}
-                  </button>
-                </div>
-              </div>
-              <span className="font-mono font-bold mt-4 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{def.teeth} {t.teeth}</span>
+        {/* Toggle Tab / Handle */}
+        <button 
+            onClick={onToggle}
+            className={`fixed z-50 top-1/2 -translate-y-1/2 transition-all duration-300 flex items-center justify-center w-8 h-20 bg-[var(--bg-panel)] border border-[var(--border-color)] border-l-0 rounded-r-xl shadow-xl hover:bg-[var(--bg-app)] text-[var(--text-accent)] font-bold text-xl focus:outline-none`}
+            style={{ 
+                left: isOpen ? 'var(--sidebar-width, 24rem)' : '0',
+                // On mobile, when open, sidebar width is dynamic (85vw), so we need JS or careful CSS.
+                // We'll override this with a class based approach for smoother simple transitions.
+                // Actually, rely on the transform of a container if possible, but fixed positioning is safer.
+            }}
+        >
+            {isOpen ? '‹' : '›'}
+        </button>
+
+        {/* Sidebar Container */}
+        <div 
+            id="sidebar-container"
+            className={`fixed md:relative z-40 inset-y-0 left-0 flex flex-col shadow-2xl transition-all duration-300 ease-in-out
+                bg-[var(--bg-panel)] border-r border-[var(--border-color)] text-[var(--text-primary)]
+                ${isOpen ? 'translate-x-0 w-[85vw] sm:w-96' : '-translate-x-full w-[85vw] sm:w-96 md:translate-x-0 md:w-0 md:border-r-0 md:overflow-hidden'}
+            `}
+            style={{
+                // Helper var for the toggle button if we used CSS vars, but we are using the class logic above.
+                // We update the toggle button position via a separate style block below or inline.
+            }}
+        >
+            {/* CSS for Toggle Button Position Sync */}
+            <style>{`
+                button[class*='fixed z-50'] {
+                    left: ${isOpen ? (window.innerWidth < 768 ? '85vw' : '24rem') : '0'} !important;
+                }
+                @media (min-width: 640px) and (max-width: 767px) {
+                     button[class*='fixed z-50'] {
+                        left: ${isOpen ? '24rem' : '0'} !important;
+                    }
+                }
+            `}</style>
+
+          <div className="p-6 border-b pb-6 flex-shrink-0" style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}>
+            <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-bold flex items-center gap-3 tracking-tight" style={{ color: 'var(--text-accent)' }}>
+                <span className="text-3xl">⚙️</span> 
+                <span className="hidden sm:inline">{t.appTitle}</span>
+                <span className="sm:hidden">GearWorks</span>
+                </h1>
+                {/* Mobile Close Button */}
+                <button onClick={onToggle} className="md:hidden p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
             </div>
-          ))}
-        </div>
-      )}
-
-      {activeTab === 'structure' && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 animate-in fade-in slide-in-from-left-4 duration-300 no-scrollbar">
             
-            {/* Technic Beams */}
-            <div>
-                <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>Technic Beams (Odd)</p>
-                <div className="space-y-6">
-                {BEAM_SIZES.map((size) => (
-                    <div key={`beam-${size}`} className="flex flex-col items-center">
-                        <div 
-                            className="w-full cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-6 rounded-2xl border-2 border-dashed hover:border-solid flex items-center justify-center"
-                            style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}
-                            draggable={true}
-                            onDragStart={(e) => onDragStart(e, JSON.stringify({ length: size, brickType: 'beam' }), 'brick')}
-                            onClick={() => onAddBrick(size, 'beam')}
-                        >
-                            <PreviewBrick length={size} type="beam" theme={theme} />
-                            
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                    className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110"
-                                    style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }}
-                                    onClick={(e) => { e.stopPropagation(); onAddBrick(size, 'beam'); }}
-                                    draggable={false}
-                                >
-                                    {t.add}
-                                </button>
-                            </div>
-                        </div>
-                        <span className="font-mono font-bold mt-2 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{size}L Beam</span>
+            {/* Tabs */}
+            <div id="sidebar-tabs" className="flex mt-6 p-1.5 rounded-xl border overflow-hidden" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)' }}>
+              <button 
+                id="tab-parts"
+                onClick={() => setActiveTab('parts')}
+                className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
+                style={{ 
+                    backgroundColor: activeTab === 'parts' ? 'var(--text-accent)' : 'transparent',
+                    color: activeTab === 'parts' ? '#fff' : 'var(--text-secondary)'
+                }}
+              >
+                {t.partsTray}
+              </button>
+              <button 
+                id="tab-structure"
+                onClick={() => setActiveTab('structure')}
+                className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
+                style={{ 
+                    backgroundColor: activeTab === 'structure' ? 'var(--text-accent)' : 'transparent',
+                    color: activeTab === 'structure' ? '#fff' : 'var(--text-secondary)'
+                }}
+              >
+                Struct
+              </button>
+              <button 
+                id="tab-missions"
+                onClick={() => setActiveTab('missions')}
+                className={`flex-1 py-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all`}
+                style={{ 
+                    backgroundColor: activeTab === 'missions' ? 'var(--text-accent)' : 'transparent',
+                    color: activeTab === 'missions' ? '#fff' : 'var(--text-secondary)'
+                }}
+              >
+                {t.missions} {completedChallenges.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-white/20 text-white rounded-full text-[10px]">{completedChallenges.length}</span>}
+              </button>
+            </div>
+          </div>
+
+          {activeTab === 'parts' && (
+            <div className="flex-1 overflow-y-auto p-6 space-y-10 animate-in fade-in slide-in-from-left-4 duration-300 no-scrollbar">
+               <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>{t.componentTray}</p>
+              {Object.values(GEAR_DEFS).map((def) => (
+                <div key={def.type} className="flex flex-col items-center">
+                  <div 
+                    className="cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-8 rounded-full border-2 border-dashed hover:border-solid"
+                    style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}
+                    draggable={true}
+                    onDragStart={(e) => onDragStart(e, def.type, 'gear')}
+                    onClick={() => onAddGear(def.type)}
+                  >
+                    <PreviewGear def={def} theme={theme} />
+                    
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110"
+                        style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }}
+                        onClick={(e) => { e.stopPropagation(); onAddGear(def.type); }}
+                        draggable={false}
+                      >
+                        {t.add}
+                      </button>
                     </div>
-                ))}
+                  </div>
+                  <span className="font-mono font-bold mt-4 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{def.teeth} {t.teeth}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'structure' && (
+            <div className="flex-1 overflow-y-auto p-6 space-y-8 animate-in fade-in slide-in-from-left-4 duration-300 no-scrollbar">
+                
+                {/* Technic Beams */}
+                <div>
+                    <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>Technic Beams (Odd)</p>
+                    <div className="space-y-6">
+                    {BEAM_SIZES.map((size) => (
+                        <div key={`beam-${size}`} className="flex flex-col items-center">
+                            <div 
+                                className="w-full cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-6 rounded-2xl border-2 border-dashed hover:border-solid flex items-center justify-center"
+                                style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}
+                                draggable={true}
+                                onDragStart={(e) => onDragStart(e, JSON.stringify({ length: size, brickType: 'beam' }), 'brick')}
+                                onClick={() => onAddBrick(size, 'beam')}
+                            >
+                                <PreviewBrick length={size} type="beam" theme={theme} />
+                                
+                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                        className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110"
+                                        style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }}
+                                        onClick={(e) => { e.stopPropagation(); onAddBrick(size, 'beam'); }}
+                                        draggable={false}
+                                    >
+                                        {t.add}
+                                    </button>
+                                </div>
+                            </div>
+                            <span className="font-mono font-bold mt-2 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{size}L Beam</span>
+                        </div>
+                    ))}
+                    </div>
+                </div>
+
+                {/* Technic Bricks */}
+                <div>
+                    <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 mt-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>Technic Bricks (Even)</p>
+                    <div className="space-y-6">
+                    {BRICK_SIZES.map((size) => (
+                        <div key={`brick-${size}`} className="flex flex-col items-center">
+                            <div 
+                                className="w-full cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-6 rounded-2xl border-2 border-dashed hover:border-solid flex items-center justify-center"
+                                style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}
+                                draggable={true}
+                                onDragStart={(e) => onDragStart(e, JSON.stringify({ length: size, brickType: 'brick' }), 'brick')}
+                                onClick={() => onAddBrick(size, 'brick')}
+                            >
+                                <PreviewBrick length={size} type="brick" theme={theme} />
+                                
+                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                        className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110"
+                                        style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }}
+                                        onClick={(e) => { e.stopPropagation(); onAddBrick(size, 'brick'); }}
+                                        draggable={false}
+                                    >
+                                        {t.add}
+                                    </button>
+                                </div>
+                            </div>
+                            <span className="font-mono font-bold mt-2 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{size} Stud Brick</span>
+                        </div>
+                    ))}
+                    </div>
                 </div>
             </div>
+          )}
 
-            {/* Technic Bricks */}
-            <div>
-                <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 mt-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>Technic Bricks (Even)</p>
-                <div className="space-y-6">
-                {BRICK_SIZES.map((size) => (
-                    <div key={`brick-${size}`} className="flex flex-col items-center">
-                        <div 
-                            className="w-full cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-6 rounded-2xl border-2 border-dashed hover:border-solid flex items-center justify-center"
-                            style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}
-                            draggable={true}
-                            onDragStart={(e) => onDragStart(e, JSON.stringify({ length: size, brickType: 'brick' }), 'brick')}
-                            onClick={() => onAddBrick(size, 'brick')}
-                        >
-                            <PreviewBrick length={size} type="brick" theme={theme} />
-                            
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                    className="text-white text-sm px-5 py-2.5 rounded-xl shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110"
-                                    style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }}
-                                    onClick={(e) => { e.stopPropagation(); onAddBrick(size, 'brick'); }}
-                                    draggable={false}
-                                >
-                                    {t.add}
-                                </button>
-                            </div>
-                        </div>
-                        <span className="font-mono font-bold mt-2 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{size} Stud Brick</span>
-                    </div>
-                ))}
-                </div>
+          {activeTab === 'missions' && (
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 animate-in fade-in slide-in-from-right-4 duration-300 no-scrollbar" style={{ backgroundColor: 'var(--bg-panel)' }}>
+               <p className="text-sm font-bold uppercase tracking-widest text-center mb-4 mt-2" style={{ color: 'var(--text-muted)' }}>{t.missionLog}</p>
+               {CHALLENGES.map(challenge => {
+                 const isCompleted = completedChallenges.includes(challenge.id);
+                 const isActive = activeChallengeId === challenge.id;
+                 const title = lang === 'zh-TW' ? challenge.titleZh : challenge.title;
+                 const desc = lang === 'zh-TW' ? challenge.descriptionZh : challenge.description;
+                 
+                 return (
+                   <div 
+                     key={challenge.id}
+                     onClick={() => onSelectChallenge(isActive ? null : challenge.id)}
+                     className={`p-5 rounded-2xl border-2 cursor-pointer transition-all relative overflow-hidden`}
+                     style={{ 
+                        backgroundColor: isActive ? 'var(--bg-app)' : 'rgba(0,0,0,0.05)',
+                        borderColor: isActive ? 'var(--text-accent)' : 'var(--border-color)',
+                        boxShadow: isActive ? '0 0 20px var(--grid-color)' : 'none'
+                     }}
+                   >
+                     {isCompleted && (
+                       <div className="absolute top-0 right-0 bg-green-600 text-white text-[10px] px-3 py-1 rounded-bl-xl font-bold border-l border-b border-green-700/50 uppercase tracking-wide shadow-sm">
+                         {t.solved}
+                       </div>
+                     )}
+                     <div className="flex justify-between items-start mb-2">
+                       <h3 className="font-bold text-base" style={{ color: isActive ? 'var(--text-accent)' : 'var(--text-primary)' }}>
+                         <span className="opacity-50 mr-2">#{challenge.id}</span> {title}
+                       </h3>
+                     </div>
+                     <p className="text-sm leading-relaxed opacity-80" style={{ color: 'var(--text-primary)' }}>{desc}</p>
+                     
+                     {isActive && !isCompleted && (
+                       <div className="mt-4 text-sm font-bold flex items-center gap-2 animate-pulse" style={{ color: 'var(--text-accent)' }}>
+                         <span>🎯 {t.targeting}</span>
+                       </div>
+                     )}
+                     
+                     {isActive && isCompleted && (
+                       <div className="mt-4 text-sm font-bold text-green-500 flex items-center gap-2">
+                         <span>✓ {t.missionAccomplished}</span>
+                       </div>
+                     )}
+                   </div>
+                 );
+               })}
             </div>
+          )}
+          
+          <div className="p-4 border-t text-xs text-center font-medium opacity-60" style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+            {t.buildClubFooter}
+          </div>
         </div>
-      )}
-
-      {activeTab === 'missions' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 animate-in fade-in slide-in-from-right-4 duration-300 no-scrollbar" style={{ backgroundColor: 'var(--bg-panel)' }}>
-           <p className="text-sm font-bold uppercase tracking-widest text-center mb-4 mt-2" style={{ color: 'var(--text-muted)' }}>{t.missionLog}</p>
-           {CHALLENGES.map(challenge => {
-             const isCompleted = completedChallenges.includes(challenge.id);
-             const isActive = activeChallengeId === challenge.id;
-             const title = lang === 'zh-TW' ? challenge.titleZh : challenge.title;
-             const desc = lang === 'zh-TW' ? challenge.descriptionZh : challenge.description;
-             
-             return (
-               <div 
-                 key={challenge.id}
-                 onClick={() => onSelectChallenge(isActive ? null : challenge.id)}
-                 className={`p-5 rounded-2xl border-2 cursor-pointer transition-all relative overflow-hidden`}
-                 style={{ 
-                    backgroundColor: isActive ? 'var(--bg-app)' : 'rgba(0,0,0,0.05)',
-                    borderColor: isActive ? 'var(--text-accent)' : 'var(--border-color)',
-                    boxShadow: isActive ? '0 0 20px var(--grid-color)' : 'none'
-                 }}
-               >
-                 {isCompleted && (
-                   <div className="absolute top-0 right-0 bg-green-600 text-white text-[10px] px-3 py-1 rounded-bl-xl font-bold border-l border-b border-green-700/50 uppercase tracking-wide shadow-sm">
-                     {t.solved}
-                   </div>
-                 )}
-                 <div className="flex justify-between items-start mb-2">
-                   <h3 className="font-bold text-base" style={{ color: isActive ? 'var(--text-accent)' : 'var(--text-primary)' }}>
-                     <span className="opacity-50 mr-2">#{challenge.id}</span> {title}
-                   </h3>
-                 </div>
-                 <p className="text-sm leading-relaxed opacity-80" style={{ color: 'var(--text-primary)' }}>{desc}</p>
-                 
-                 {isActive && !isCompleted && (
-                   <div className="mt-4 text-sm font-bold flex items-center gap-2 animate-pulse" style={{ color: 'var(--text-accent)' }}>
-                     <span>🎯 {t.targeting}</span>
-                   </div>
-                 )}
-                 
-                 {isActive && isCompleted && (
-                   <div className="mt-4 text-sm font-bold text-green-500 flex items-center gap-2">
-                     <span>✓ {t.missionAccomplished}</span>
-                   </div>
-                 )}
-               </div>
-             );
-           })}
-        </div>
-      )}
-      
-      <div className="p-4 border-t text-xs text-center font-medium opacity-60" style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
-        {t.buildClubFooter}
-      </div>
-    </div>
+    </>
   );
 };

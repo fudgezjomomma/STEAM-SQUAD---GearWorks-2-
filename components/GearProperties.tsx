@@ -17,6 +17,7 @@ interface GearPropertiesProps {
 
 export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, onUpdate, onAddSibling, onConnectBelt, onDelete, onClose, lang }) => {
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const t = TRANSLATIONS[lang];
 
   // Find siblings (same axle)
@@ -24,7 +25,12 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
 
   return (
     <div 
-        className="absolute top-24 right-6 w-96 rounded-3xl shadow-2xl border-2 p-6 animate-in fade-in slide-in-from-right-8 z-50 backdrop-blur-md"
+        className={`
+            z-50 backdrop-blur-md shadow-2xl border-2 transition-all duration-300
+            fixed bottom-0 left-0 right-0 rounded-t-3xl border-b-0
+            md:absolute md:top-24 md:right-6 md:left-auto md:bottom-auto md:w-96 md:rounded-3xl md:border-b-2
+            ${isMinimized ? 'h-16' : 'max-h-[80vh]'}
+        `}
         style={{ 
             backgroundColor: 'var(--bg-panel-translucent)', 
             borderColor: 'var(--border-color)',
@@ -32,12 +38,34 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
         }}
     >
       {/* Header */}
-      <div className="flex justify-between items-center mb-6 border-b pb-4" style={{ borderColor: 'var(--border-color)' }}>
-        <h3 className="font-bold uppercase tracking-widest text-base" style={{ color: 'var(--text-accent)' }}>{t.propTitle}</h3>
-        <button onClick={onClose} className="hover:opacity-70 transition-opacity bg-black/20 rounded-full w-10 h-10 flex items-center justify-center text-2xl font-bold leading-none">&times;</button>
+      <div 
+        className="flex justify-between items-center p-6 border-b cursor-pointer md:cursor-default" 
+        style={{ borderColor: 'var(--border-color)' }}
+        onClick={() => window.innerWidth < 768 && setIsMinimized(!isMinimized)}
+      >
+        <div className="flex items-center gap-3">
+            <button 
+                className="md:hidden text-[var(--text-accent)] font-bold text-xl focus:outline-none"
+                onClick={(e) => { e.stopPropagation(); setIsMinimized(!isMinimized); }}
+            >
+                {isMinimized ? '▲' : '▼'}
+            </button>
+            <h3 className="font-bold uppercase tracking-widest text-base" style={{ color: 'var(--text-accent)' }}>{t.propTitle}</h3>
+        </div>
+        <button 
+            onClick={(e) => { e.stopPropagation(); onClose(); }} 
+            className="hover:opacity-70 transition-opacity bg-black/20 rounded-full w-10 h-10 flex items-center justify-center text-2xl font-bold leading-none"
+        >
+            &times;
+        </button>
       </div>
 
-      <div className="space-y-6 max-h-[70vh] overflow-y-auto no-scrollbar pr-1">
+      {/* Scrollable Content - Hidden when minimized on mobile */}
+      <div className={`
+        p-6 space-y-6 overflow-y-auto no-scrollbar
+        ${isMinimized ? 'hidden md:block' : 'block'}
+      `} style={{ maxHeight: 'calc(80vh - 4rem)', height: '100%' }}>
+        
         {/* Telemetry Section */}
         <div className="p-5 rounded-2xl border-2 relative overflow-hidden" style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}>
           <div className="absolute top-3 right-3">
@@ -152,7 +180,7 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({ gear, allGears, 
         </div>
 
         {/* Actions */}
-        <div className="pt-4 border-t-2 space-y-5" style={{ borderColor: 'var(--border-color)' }}>
+        <div className="pt-4 border-t-2 space-y-5 pb-10 md:pb-0" style={{ borderColor: 'var(--border-color)' }}>
             <div className="flex items-center justify-between bg-black/10 p-3 rounded-xl">
             <label className="text-sm font-bold uppercase tracking-wide cursor-pointer" htmlFor='motor-toggle' style={{ color: 'var(--text-accent)' }}>{t.setMotor}</label>
             <label className="relative inline-flex items-center cursor-pointer">

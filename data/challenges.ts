@@ -1,399 +1,324 @@
-import { Challenge, GearState } from '../types';
+
+import { v4 as uuidv4 } from 'uuid';
+import { Challenge, GearState, BrickState, Belt, GearType } from '../types';
+import { HOLE_SPACING } from '../constants';
+
+// Helper to create standard starting components
+const createPreset = (): { gears: GearState[], bricks: BrickState[], belts: Belt[] } => ({
+    gears: [],
+    bricks: [],
+    belts: []
+});
+
+const cx = 500;
+const cy = 350;
 
 export const CHALLENGES: Challenge[] = [
+  // --- TUTORIAL / BASICS ---
   {
     id: 1,
-    title: "Speed Up (2x)",
-    titleZh: "加速 (2倍)",
-    description: "Make a gear spin exactly twice as fast as the Motor gear.",
-    descriptionZh: "讓一個齒輪的轉速剛好是馬達齒輪的兩倍。",
+    title: "First Steps",
+    titleZh: "第一步",
+    description: "Two gears are placed on a beam but aren't connecting. Move the red gear to mesh with the green motor gear.",
+    descriptionZh: "兩個齒輪放在橫梁上但沒有連接。移動紅色齒輪使其與綠色馬達齒輪嚙合。",
+    preset: () => {
+        const p = createPreset();
+        // 7L Beam
+        const b1: BrickState = { id: uuidv4(), length: 7, brickType: 'beam', x: cx - 100, y: cy, rotation: 0 };
+        p.bricks.push(b1);
+        
+        // Motor Gear (Index 0)
+        const g1: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false
+        };
+        
+        // Target Gear (Far away)
+        const g2: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x + (6 * HOLE_SPACING), y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+        
+        p.gears.push(g1, g2);
+        return p;
+    },
     check: (gears: GearState[]) => {
       const motor = gears.find(g => g.isMotor);
       if (!motor) return [];
-      
-      const targets = gears.filter(g => 
-        !g.isMotor && 
-        !g.isJammed && 
-        Math.abs(g.ratio) === 2.0
-      );
-      
+      const targets = gears.filter(g => !g.isMotor && g.rpm !== 0);
       if (targets.length > 0) return [motor.id, ...targets.map(t => t.id)];
       return [];
     }
   },
   {
     id: 2,
-    title: "Direction Reversal",
-    titleZh: "反向旋轉",
-    description: "Make the final gear spin in the opposite direction of the Motor.",
-    descriptionZh: "讓最後一個齒輪與馬達反方向旋轉。",
+    title: "The Gap (Idler)",
+    titleZh: "鴻溝 (惰輪)",
+    description: "The Motor and the Output gear are too far apart to touch. Add an 'Idler' gear in the middle to bridge the gap.",
+    descriptionZh: "馬達和輸出齒輪距離太遠，無法接觸。在中間加入一個「惰輪」來填補鴻溝。",
+    preset: () => {
+        const p = createPreset();
+        // 5L Beam
+        const b1: BrickState = { id: uuidv4(), length: 5, brickType: 'beam', x: cx - 80, y: cy, rotation: 0 };
+        p.bricks.push(b1);
+        
+        // Motor (Index 0) - 16T
+        const g1: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false
+        };
+        
+        // Output (Index 4) - 16T
+        const g2: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x + (4 * HOLE_SPACING), y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+        
+        p.gears.push(g1, g2);
+        return p;
+    },
     check: (gears: GearState[]) => {
-      const motor = gears.find(g => g.isMotor);
-      if (!motor) return [];
-
-      const targets = gears.filter(g => 
-        !g.isMotor && 
-        !g.isJammed && 
-        g.speed !== 0 &&
-        g.direction !== motor.direction
-      );
-
-      if (targets.length > 0) return [motor.id, ...targets.map(t => t.id)];
+      // Need at least 3 gears moving
+      const moving = gears.filter(g => g.rpm !== 0 && !g.isJammed);
+      if (moving.length >= 3) return moving.map(g => g.id);
       return [];
     }
   },
   {
     id: 3,
-    title: "The Long Chain",
-    titleZh: "長鏈傳動",
-    description: "Build a chain with at least 3 direction changes (4 connected gears).",
-    descriptionZh: "建立一個至少有3次方向改變的齒輪鏈（4個相連齒輪）。",
-    check: (gears: GearState[]) => {
-      const moving = gears.filter(g => g.speed !== 0 && !g.isJammed);
-      if (moving.length >= 4) return moving.map(g => g.id);
-      return [];
-    }
-  },
-  {
-    id: 4,
-    title: "Gearing Down (0.5x)",
-    titleZh: "減速 (0.5倍)",
-    description: "Make a gear spin at half (0.5x) the speed of the Motor.",
-    descriptionZh: "讓一個齒輪的轉速是馬達的一半 (0.5倍)。",
-    check: (gears: GearState[]) => {
-      const motor = gears.find(g => g.isMotor);
-      if (!motor) return [];
-      
-      const targets = gears.filter(g => 
-        !g.isMotor && 
-        !g.isJammed && 
-        Math.abs(g.ratio) === 0.5
-      );
-      
-      if (targets.length > 0) return [motor.id, ...targets.map(t => t.id)];
-      return [];
-    }
-  },
-  {
-    id: 5,
-    title: "Same Direction",
-    titleZh: "同向旋轉",
-    description: "Make an output gear spin the SAME direction as the Motor (requires an idler).",
-    descriptionZh: "讓輸出齒輪與馬達同方向旋轉（需要惰輪）。",
-    check: (gears: GearState[]) => {
-      const motor = gears.find(g => g.isMotor);
-      if (!motor) return [];
+    title: "Torque Lifter",
+    titleZh: "扭力舉重機",
+    description: "We have a fast motor but a heavy 250Nm load. The motor is stalling! Build a gear reduction (Small Driver -> Large Driven) to increase torque.",
+    descriptionZh: "我們有一個高速馬達，但負載高達 250Nm。馬達卡死了！建立一個減速齒輪組（小驅動 -> 大被動）來增加扭力。",
+    preset: () => {
+        const p = createPreset();
+        const b1: BrickState = { id: uuidv4(), length: 9, brickType: 'beam', x: cx - 120, y: cy, rotation: 0 };
+        p.bricks.push(b1);
 
-      const targets = gears.filter(g => 
-        !g.isMotor && 
-        !g.isJammed && 
-        g.speed !== 0 &&
-        g.direction === motor.direction
-      );
+        // Weak Motor (High Speed, Low Torque)
+        const g1: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Small, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: true, motorSpeed: 2, motorRpm: 120, motorTorque: 60, motorDirection: 1, load: 0, // Only 60Nm torque
+            ratio: 1, rpm: 120, torque: 60, direction: 1, speed: 2, isJammed: false, isStalled: false
+        };
 
-      if (targets.length > 0) return [motor.id, ...targets.map(t => t.id)];
-      return [];
-    }
-  },
-  {
-    id: 6,
-    title: "Exact Ratio (2.5x)",
-    titleZh: "精確比例 (2.5倍)",
-    description: "Create a gear ratio of exactly 2.5x. (Hint: 40T driving 16T).",
-    descriptionZh: "創造剛好 2.5倍 的齒輪比。（提示：40齒 驅動 16齒）。",
+        // Heavy Load Gear (Currently disconnected or direct connect would fail)
+        // Placed far away so user has to build to it
+        const g2: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.ExtraLarge, x: b1.x + (4 * HOLE_SPACING), y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, 
+            load: 250, // 250Nm Load vs 60Nm Motor. Needs 4.16x ratio.
+            // 8T -> 40T is 5x. Torque = 60 * 5 = 300Nm. Success.
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+
+        p.gears.push(g1, g2);
+        return p;
+    },
     check: (gears: GearState[]) => {
-      const motor = gears.find(g => g.isMotor);
-      if (!motor) return [];
-      
-      const targets = gears.filter(g => 
-        !g.isMotor && 
-        !g.isJammed && 
-        Math.abs(g.ratio) === 2.5
-      );
-      
-      if (targets.length > 0) return [motor.id, ...targets.map(t => t.id)];
-      return [];
-    }
-  },
-  {
-    id: 7,
-    title: "High Speed (>4x)",
-    titleZh: "高速旋轉 (>4倍)",
-    description: "Make a gear spin more than 4 times faster than the motor.",
-    descriptionZh: "讓一個齒輪的轉速比馬達快 4 倍以上。",
-    check: (gears: GearState[]) => {
-      const motor = gears.find(g => g.isMotor);
-      if (!motor) return [];
-      
-      const targets = gears.filter(g => 
-        !g.isMotor && 
-        !g.isJammed && 
-        Math.abs(g.ratio) > 4
-      );
-      
-      if (targets.length > 0) return [motor.id, ...targets.map(t => t.id)];
-      return [];
-    }
-  },
-  {
-    id: 8,
-    title: "The Crawler (<0.3x)",
-    titleZh: "龜速爬行 (<0.3倍)",
-    description: "Make a gear spin very slowly (less than 0.3x motor speed).",
-    descriptionZh: "讓一個齒輪轉得非常慢（低於馬達速度的 0.3倍）。",
-    check: (gears: GearState[]) => {
-      const motor = gears.find(g => g.isMotor);
-      if (!motor) return [];
-      
-      const targets = gears.filter(g => 
-        !g.isMotor && 
-        !g.isJammed && 
-        Math.abs(g.speed) > 0 && 
-        Math.abs(g.ratio) < 0.3
-      );
-      
-      if (targets.length > 0) return [motor.id, ...targets.map(t => t.id)];
-      return [];
-    }
-  },
-  {
-    id: 9,
-    title: "The Jam",
-    titleZh: "卡死測試",
-    description: "Create a mechanical jam (locked loop) where gears cannot move.",
-    descriptionZh: "製造機械卡死（鎖死的迴圈），讓齒輪無法移動。",
-    check: (gears: GearState[]) => {
-      const jammed = gears.filter(g => g.isJammed);
-      if (jammed.length > 0) return jammed.map(g => g.id);
-      return [];
-    }
-  },
-  {
-    id: 10,
-    title: "Split Outputs",
-    titleZh: "分流輸出",
-    description: "Have one gear spinning faster (>1x) and one slower (<1x) at the same time.",
-    descriptionZh: "讓一個齒輪轉得較快 (>1倍)，同時另一個轉得較慢 (<1倍)。",
-    check: (gears: GearState[]) => {
-       const fast = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.ratio) > 1);
-       const slow = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.speed) > 0 && Math.abs(g.ratio) < 1);
-       
-       if (fast.length > 0 && slow.length > 0) {
-         return [...fast.map(g => g.id), ...slow.map(g => g.id)];
-       }
-       return [];
-    }
-  },
-  // --- NEW COMPOUND & ADVANCED MISSIONS ---
-  {
-    id: 11,
-    title: "Compound Basics",
-    titleZh: "複合齒輪基礎",
-    description: "Create a Compound Axle by stacking two gears on top of each other.",
-    descriptionZh: "透過將兩個齒輪疊在同一個軸上來建立複合軸。",
-    check: (gears: GearState[]) => {
-      // Look for an axle with more than 1 gear
-      const axleCounts = new Map<string, number>();
-      gears.forEach(g => {
-        axleCounts.set(g.axleId, (axleCounts.get(g.axleId) || 0) + 1);
-      });
-      
-      for (const [axleId, count] of axleCounts.entries()) {
-        if (count >= 2) {
-           const axleGears = gears.filter(g => g.axleId === axleId);
-           // Ensure it's active
-           if (axleGears[0].rpm !== 0) return axleGears.map(g => g.id);
-        }
+      const loadGear = gears.find(g => g.load >= 250);
+      if (loadGear && !loadGear.isStalled && loadGear.rpm !== 0) {
+          return [loadGear.id];
       }
       return [];
     }
   },
   {
-    id: 12,
-    title: "Turbo Boost (25x)",
-    titleZh: "渦輪加速 (25倍)",
-    description: "Achieve a massive 25x speed increase using compound gears (Hint: Two 5x stages).",
-    descriptionZh: "使用複合齒輪達成 25倍 的巨大增速。（提示：兩個 5倍 階段）。",
+    id: 4,
+    title: "Pulley Power",
+    titleZh: "滑輪動力",
+    description: "The gears are on separate islands! Use a Belt to connect the motor system to the target system.",
+    descriptionZh: "齒輪在分開的孤島上！使用皮帶連接馬達系統和目標系統。",
+    preset: () => {
+        const p = createPreset();
+        
+        // Island 1
+        const b1: BrickState = { id: uuidv4(), length: 3, brickType: 'beam', x: cx - 200, y: cy, rotation: 0 };
+        p.bricks.push(b1);
+        const g1: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Large, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false
+        };
+        p.gears.push(g1);
+
+        // Island 2
+        const b2: BrickState = { id: uuidv4(), length: 3, brickType: 'beam', x: cx + 100, y: cy - 100, rotation: 45 };
+        p.bricks.push(b2);
+        const g2: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Large, x: b2.x, y: b2.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+        p.gears.push(g2);
+
+        return p;
+    },
     check: (gears: GearState[]) => {
-      const targets = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.ratio - 25) < 0.1);
-      if (targets.length > 0) return targets.map(t => t.id);
+        const target = gears.find(g => !g.isMotor && g.rpm !== 0);
+        if (target) return [target.id];
+        return [];
+    }
+  },
+  {
+    id: 5,
+    title: "Compound Basics",
+    titleZh: "複合齒輪基礎",
+    description: "Two gears are stacked on the same axle (Compound). Connect the motor to the bottom one, and use the top one to drive the final gear.",
+    descriptionZh: "兩個齒輪疊在同一個軸上（複合）。將馬達連接到底部齒輪，並使用頂部齒輪驅動最終齒輪。",
+    preset: () => {
+        const p = createPreset();
+        const b1: BrickState = { id: uuidv4(), length: 9, brickType: 'beam', x: cx - 100, y: cy, rotation: 0 };
+        p.bricks.push(b1);
+
+        // Motor
+        const gMotor: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false
+        };
+        
+        // Middle Stack (Axle 2)
+        const axle2 = uuidv4();
+        // Bottom Gear (Large)
+        const gStackBottom: GearState = {
+            id: uuidv4(), axleId: axle2, type: GearType.ExtraLarge, x: b1.x + (3*HOLE_SPACING), y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+        // Top Gear (Small)
+        const gStackTop: GearState = {
+            id: uuidv4(), axleId: axle2, type: GearType.Small, x: b1.x + (3*HOLE_SPACING), y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+
+        // Final Target
+        const gTarget: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x + (5*HOLE_SPACING), y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+
+        p.gears.push(gMotor, gStackBottom, gStackTop, gTarget);
+        return p;
+    },
+    check: (gears: GearState[]) => {
+      const last = gears[gears.length - 1]; // Target is last in preset
+      if (last.rpm !== 0 && !last.isJammed) return [last.id];
       return [];
     }
   },
   {
-    id: 13,
-    title: "Super Slow (0.04x)",
-    titleZh: "超級慢動作 (0.04倍)",
-    description: "Reduce speed to 0.04x (1/25th) of the motor speed.",
-    descriptionZh: "將速度降低到馬達速度的 0.04倍 (1/25)。",
+    id: 6,
+    title: "Wall Climber",
+    titleZh: "攀牆者",
+    description: "Build a vertical gear train up the wall to reach the flag (top gear).",
+    descriptionZh: "沿著牆壁建立一個垂直齒輪系，以到達旗幟（頂部齒輪）。",
+    preset: () => {
+        const p = createPreset();
+        // Vertical Brick Wall
+        const b1: BrickState = { id: uuidv4(), length: 8, brickType: 'brick', x: cx, y: cy + 100, rotation: 270 };
+        p.bricks.push(b1);
+
+        // Motor at bottom
+        const gMotor: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false
+        };
+        
+        // Target placeholder at top (user needs to reach it)
+        const gTarget: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x, y: b1.y - (7 * HOLE_SPACING), rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+
+        p.gears.push(gMotor, gTarget);
+        return p;
+    },
     check: (gears: GearState[]) => {
-      const targets = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.ratio - 0.04) < 0.001);
-      if (targets.length > 0) return targets.map(t => t.id);
-      return [];
+         const topGear = gears.reduce((highest, current) => current.y < highest.y ? current : highest, gears[0]);
+         if (topGear && topGear.rpm !== 0 && !topGear.isMotor && topGear.y < (cy - 100)) {
+             return [topGear.id];
+         }
+         return [];
     }
   },
   {
-    id: 14,
-    title: "Precision: 10x",
-    titleZh: "精確度：10倍",
-    description: "Build a gear train with an exact ratio of 10x (Hint: Combine a 5x and a 2x stage).",
-    descriptionZh: "建立一個剛好 10倍 的齒輪系。（提示：結合一個 5倍 和一個 2倍 的階段）。",
+    id: 7,
+    title: "Cross Output",
+    titleZh: "交叉輸出",
+    description: "The motor turns Clockwise. Make the TWO output gears turn Counter-Clockwise.",
+    descriptionZh: "馬達順時針旋轉。讓這兩個輸出齒輪都逆時針旋轉。",
+    preset: () => {
+         const p = createPreset();
+         const b1: BrickState = { id: uuidv4(), length: 9, brickType: 'beam', x: cx - 120, y: cy, rotation: 0 };
+         p.bricks.push(b1);
+
+         const gMotor: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x + 4*HOLE_SPACING, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false
+         };
+
+         const gOut1: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+         };
+
+         const gOut2: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x + 8*HOLE_SPACING, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+         };
+
+         p.gears.push(gMotor, gOut1, gOut2);
+         return p;
+    },
     check: (gears: GearState[]) => {
-      const targets = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.ratio - 10.0) < 0.1);
-      if (targets.length > 0) return targets.map(t => t.id);
-      return [];
+        const motor = gears.find(g => g.isMotor);
+        if (!motor) return [];
+        
+        // Find non-motor gears moving in OPPOSITE direction
+        const correctDir = gears.filter(g => !g.isMotor && !g.isJammed && g.rpm !== 0 && g.direction !== motor.direction);
+        
+        if (correctDir.length >= 2) return [motor.id, ...correctDir.map(g => g.id)];
+        return [];
     }
   },
   {
-    id: 15,
-    title: "Warp Speed (>16x)",
-    titleZh: "曲速引擎 (>16倍)",
-    description: "Spin a gear faster than 16x the motor speed.",
-    descriptionZh: "讓齒輪轉速比馬達快 16 倍以上。",
-    check: (gears: GearState[]) => {
-      const targets = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.ratio) > 16);
-      if (targets.length > 0) return targets.map(t => t.id);
-      return [];
-    }
-  },
-  {
-    id: 16,
-    title: "Glacial Pace (<0.02x)",
-    titleZh: "冰河移動 (<0.02倍)",
-    description: "Spin a gear slower than 0.02x the motor speed.",
-    descriptionZh: "讓齒輪轉速低於馬達速度的 0.02 倍。",
-    check: (gears: GearState[]) => {
-      const targets = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.ratio) < 0.02 && Math.abs(g.ratio) > 0);
-      if (targets.length > 0) return targets.map(t => t.id);
-      return [];
-    }
-  },
-  {
-    id: 17,
-    title: "Triple Compound",
-    titleZh: "三重複合",
-    description: "Chain 3 separate compound axles together in a row.",
-    descriptionZh: "將 3 個獨立的複合軸串連在一起。",
-    check: (gears: GearState[]) => {
-       // Check for 3 moving compound axles
-       const compoundAxles = new Set<string>();
-       const axleCounts = new Map<string, number>();
-       gears.forEach(g => axleCounts.set(g.axleId, (axleCounts.get(g.axleId) || 0) + 1));
-       
-       gears.forEach(g => {
-          if (!g.isJammed && g.rpm !== 0 && (axleCounts.get(g.axleId) || 0) >= 2) {
-            compoundAxles.add(g.axleId);
-          }
-       });
-       
-       if (compoundAxles.size >= 3) {
-         return gears.filter(g => compoundAxles.has(g.axleId)).map(g => g.id);
-       }
-       return [];
-    }
-  },
-  {
-    id: 18,
-    title: "Split Personality",
-    titleZh: "雙重性格",
-    description: "Have one output spinning >4x and another spinning <0.25x at the same time.",
-    descriptionZh: "同時擁有一個轉速 >4倍 的輸出和一個轉速 <0.25倍 的輸出。",
-    check: (gears: GearState[]) => {
-       const fast = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.ratio) > 4);
-       const slow = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.ratio) < 0.25 && g.rpm !== 0);
-       
-       if (fast.length > 0 && slow.length > 0) {
-         return [...fast.map(g => g.id), ...slow.map(g => g.id)];
-       }
-       return [];
-    }
-  },
-  {
-    id: 19,
-    title: "Odd Ratio (3.75x)",
-    titleZh: "特殊比例 (3.75倍)",
-    description: "Achieve a ratio of exactly 3.75x (Hint: 2.5 * 1.5).",
-    descriptionZh: "達成剛好 3.75倍 的比例。（提示：2.5 * 1.5）。",
-    check: (gears: GearState[]) => {
-      const targets = gears.filter(g => !g.isMotor && !g.isJammed && Math.abs(g.ratio - 3.75) < 0.01);
-      if (targets.length > 0) return targets.map(t => t.id);
-      return [];
-    }
-  },
-  {
-    id: 20,
-    title: "The Grandmaster",
-    titleZh: "齒輪大師",
-    description: "Build a massive machine with at least 15 moving gears.",
-    descriptionZh: "建造一個至少有 15 個移動齒輪的巨大機器。",
-    check: (gears: GearState[]) => {
-      const moving = gears.filter(g => g.rpm !== 0 && !g.isJammed);
-      if (moving.length >= 15) return moving.map(g => g.id);
-      return [];
-    }
-  },
-  // --- NEW TORQUE & LOAD CHALLENGES ---
-  {
-    id: 21,
-    title: "Leverage (250Nm)",
-    titleZh: "槓桿原理 (250Nm)",
-    description: "Set a gear's Load to 250Nm and make sure it keeps spinning (not stalled).",
-    descriptionZh: "將齒輪的負載(Load)設為 250Nm，並確保它繼續旋轉（不卡死）。",
-    check: (gears: GearState[]) => {
-      // Check for a gear that has high load, is moving, and not stalled
-      const successfulLoad = gears.find(g => !g.isMotor && g.load >= 250 && !g.isStalled && g.rpm !== 0);
-      if (successfulLoad) return [successfulLoad.id];
-      return [];
-    }
-  },
-  {
-    id: 22,
-    title: "Industrial Lift (1000Nm)",
-    titleZh: "工業升降機 (1000Nm)",
-    description: "Lift a heavy load! Set a gear's Load to 1000Nm and keep it spinning. (Requires ~10x torque).",
-    descriptionZh: "舉起重物！將齒輪負載設為 1000Nm 並保持旋轉。（需要約 10倍 扭力）。",
-    check: (gears: GearState[]) => {
-      const successfulLoad = gears.find(g => !g.isMotor && g.load >= 1000 && !g.isStalled && g.rpm !== 0);
-      if (successfulLoad) return [successfulLoad.id];
-      return [];
-    }
-  },
-  {
-    id: 23,
-    title: "The Sweet Spot",
-    titleZh: "最佳平衡",
-    description: "Move a 400Nm Load, but keep the speed above 0.15x (Don't make it too slow!).",
-    descriptionZh: "移動 400Nm 的負載，但保持速度在 0.15倍 以上（不要太慢！）。",
-    check: (gears: GearState[]) => {
-      const target = gears.find(g => 
-        !g.isMotor && 
-        g.load >= 400 && 
-        !g.isStalled && 
-        g.rpm !== 0 && 
-        Math.abs(g.ratio) >= 0.15
-      );
-      if (target) return [target.id];
-      return [];
-    }
-  },
-  {
-    id: 24,
-    title: "Compound Strength",
-    titleZh: "複合力量",
-    description: "Use compound gears to move a massive 1500Nm Load.",
-    descriptionZh: "使用複合齒輪來移動 1500Nm 的巨大負載。",
-    check: (gears: GearState[]) => {
-      const successfulLoad = gears.find(g => !g.isMotor && g.load >= 1500 && !g.isStalled && g.rpm !== 0);
-      if (successfulLoad) return [successfulLoad.id];
-      return [];
-    }
-  },
-  {
-    id: 25,
+    id: 8,
     title: "The Titan (3000Nm)",
     titleZh: "泰坦巨人 (3000Nm)",
-    description: "The ultimate test. Move a 3000Nm Load without stalling the motor.",
-    descriptionZh: "終極測試。移動 3000Nm 的負載而不讓馬達卡死。",
+    description: "Final Test. The load is massive (3000Nm). The motor is standard (100Nm). You need a 30:1 gear reduction to move it.",
+    descriptionZh: "最終測試。負載巨大 (3000Nm)。馬達是標準的 (100Nm)。你需要 30:1 的齒輪減速比才能移動它。",
+    preset: () => {
+        const p = createPreset();
+        const b1: BrickState = { id: uuidv4(), length: 15, brickType: 'beam', x: cx - 200, y: cy, rotation: 0 };
+        p.bricks.push(b1);
+
+        const gMotor: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.Small, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false
+        };
+
+        const gLoad: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: GearType.ExtraLarge, x: b1.x + 12*HOLE_SPACING, y: b1.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 3000,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+        };
+
+        p.gears.push(gMotor, gLoad);
+        return p;
+    },
     check: (gears: GearState[]) => {
       const successfulLoad = gears.find(g => !g.isMotor && g.load >= 3000 && !g.isStalled && g.rpm !== 0);
       if (successfulLoad) return [successfulLoad.id];

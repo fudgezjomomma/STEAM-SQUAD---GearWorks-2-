@@ -73,11 +73,18 @@ export interface DragItem {
   offsetY: number;
 }
 
+export interface ChallengePreset {
+    gears: GearState[];
+    bricks: BrickState[];
+    belts: Belt[];
+}
+
 export interface Challenge {
   id: number;
   title: string;
   titleZh: string;
   description: string;
   descriptionZh: string;
+  preset?: () => ChallengePreset; // Optional function to generate initial state
   check: (gears: GearState[]) => string[]; 
 }
