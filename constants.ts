@@ -39,7 +39,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#94A3B8',  // Slate-400
         light: '#EF4444', // Red-500
-        steam: '#F4F4F5'  // Zinc-100
+        steam: '#71717A'  // Zinc-500 (Darker Gray)
     }
   },
   [GearType.Twelve]: {
@@ -49,7 +49,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#67E8F9',  // Cyan-300
         light: '#F97316', // Orange-500
-        steam: '#E4E4E7'  // Zinc-200
+        steam: '#64748B'  // Slate-500
     }
   },
   [GearType.Medium]: {
@@ -59,7 +59,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#2DD4BF',  // Teal-400
         light: '#84CC16', // Lime-500
-        steam: '#D4D4D8'  // Zinc-300
+        steam: '#52525B'  // Zinc-600
     }
   },
   [GearType.MediumLarge]: {
@@ -69,7 +69,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#22D3EE',  // Cyan-400
         light: '#10B981', // Emerald-500
-        steam: '#A1A1AA'  // Zinc-400
+        steam: '#475569'  // Slate-600
     }
   },
   [GearType.Large]: {
@@ -79,7 +79,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#38BDF8',  // Sky-400
         light: '#06B6D4', // Cyan-500
-        steam: '#71717A'  // Zinc-500
+        steam: '#3F3F46'  // Zinc-700
     }
   },
   [GearType.TwentyEight]: {
@@ -89,7 +89,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#60A5FA',  // Blue-400
         light: '#3B82F6', // Blue-500
-        steam: '#52525B'  // Zinc-600
+        steam: '#334155'  // Slate-700
     }
   },
   [GearType.ThirtySix]: {
@@ -99,7 +99,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#818CF8',  // Indigo-400
         light: '#8B5CF6', // Violet-500
-        steam: '#3F3F46'  // Zinc-700
+        steam: '#27272A'  // Zinc-800
     }
   },
   [GearType.ExtraLarge]: {
@@ -109,7 +109,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#A78BFA',  // Violet-400
         light: '#D946EF', // Fuchsia-500
-        steam: '#27272A'  // Zinc-800
+        steam: '#18181B'  // Zinc-900
     }
   }
 };

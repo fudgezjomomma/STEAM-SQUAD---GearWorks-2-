@@ -24,13 +24,14 @@ interface SidebarProps {
 const PreviewGear: React.FC<{ def: any, theme: 'dark' | 'light' | 'steam' }> = ({ def, theme }) => {
     const pathData = useMemo(() => generateGearPath(def.teeth, def.radius), [def.teeth, def.radius]);
     const color = def.colors[theme];
+    const opacity = theme === 'steam' ? "0.9" : "0.8";
 
     return (
         <svg width={def.radius * 2.2} height={def.radius * 2.2} viewBox={`-${def.radius*1.2} -${def.radius*1.2} ${def.radius * 2.4} ${def.radius * 2.4}`} className="overflow-visible pointer-events-none block drop-shadow-lg">
             <path 
                 d={pathData} 
                 fill={color} 
-                fillOpacity="0.8"
+                fillOpacity={opacity}
                 fillRule="evenodd"
                 stroke={color}
                 strokeOpacity="0.5"
@@ -61,13 +62,10 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'd
     }
 
     const padding = 10;
-    // ViewBox logic: We need to contain rectX -> rectX + rectWidth
-    // The drawing assumes origin at (0,0) for first hole.
-    // We need to shift the origin so the brick is centered in SVG.
     const totalWidth = rectWidth;
     const totalHeight = BRICK_WIDTH + (isBeam ? 0 : 4);
     
-    const shiftX = -rectX + padding; // shift so rectX is at padding
+    const shiftX = -rectX + padding; 
     const shiftY = BRICK_WIDTH/2 + (isBeam ? 0 : 4);
 
     return (
@@ -115,6 +113,7 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'd
 export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddBrick, activeChallengeId, onSelectChallenge, onStartLesson, completedChallenges, lang, theme, isOpen, onToggle }) => {
   const [activeTab, setActiveTab] = useState<'parts' | 'structure' | 'missions' | 'lessons'>('parts');
   const t = TRANSLATIONS[lang];
+  const isMobile = window.innerWidth < 768;
 
   return (
     <>
@@ -129,7 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
             onClick={onToggle}
             className={`fixed z-50 top-1/2 -translate-y-1/2 transition-all duration-300 flex items-center justify-center w-8 h-20 bg-[var(--bg-panel)] border border-[var(--border-color)] border-l-0 rounded-r-xl shadow-xl hover:bg-[var(--bg-app)] text-[var(--text-accent)] font-bold text-xl focus:outline-none`}
             style={{ 
-                left: isOpen ? 'var(--sidebar-width, 24rem)' : '0',
+                left: isOpen ? (isMobile ? '85vw' : '24rem') : '0',
             }}
         >
             {isOpen ? '‹' : '›'}
@@ -143,17 +142,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                 ${isOpen ? 'translate-x-0 w-[85vw] sm:w-96' : '-translate-x-full w-[85vw] sm:w-96 md:translate-x-0 md:w-0 md:border-r-0 md:overflow-hidden'}
             `}
         >
-            <style>{`
-                button[class*='fixed z-50'] {
-                    left: ${isOpen ? (window.innerWidth < 768 ? '85vw' : '24rem') : '0'} !important;
-                }
-                @media (min-width: 640px) and (max-width: 767px) {
-                     button[class*='fixed z-50'] {
-                        left: ${isOpen ? '24rem' : '0'} !important;
-                    }
-                }
-            `}</style>
-
           <div className="p-6 border-b pb-6 flex-shrink-0" style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}>
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-bold flex items-center gap-3 tracking-tight" style={{ color: 'var(--text-accent)' }}>

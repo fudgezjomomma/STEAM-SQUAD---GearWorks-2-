@@ -1,5 +1,3 @@
-
-
 export type Language = 'en' | 'zh-TW';
 
 export const TRANSLATIONS = {
@@ -53,7 +51,9 @@ export const TRANSLATIONS = {
     stayHere: "Stay Here",
     
     // Gear Properties
-    propTitle: "Component Properties",
+    propTitle: "Properties",
+    noSelection: "No Component Selected",
+    noSelectionDesc: "Select a gear or brick on the workspace to view and edit its properties.",
     telemetry: "Telemetry",
     speed: "Speed",
     direction: "Direction",
@@ -164,6 +164,8 @@ export const TRANSLATIONS = {
     
     // Gear Properties
     propTitle: "零件屬性",
+    noSelection: "未選擇組件",
+    noSelectionDesc: "在工作區點擊齒輪或積木以查看和編輯其屬性。",
     telemetry: "遙測數據",
     speed: "倍率",
     direction: "方向",

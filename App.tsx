@@ -40,6 +40,9 @@ const App: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedBrickId, setSelectedBrickId] = useState<string | null>(null);
   
+  // Properties Drawer State
+  const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
+
   // Belt Creation Mode
   const [beltSourceId, setBeltSourceId] = useState<string | null>(null);
 
@@ -95,7 +98,9 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<{ gears: GearState[], belts: Belt[], bricks: BrickState[] }[]>([]);
   const [future, setFuture] = useState<{ gears: GearState[], belts: Belt[], bricks: BrickState[] }[]>([]);
   const undoRef = useRef<{ gears: GearState[], belts: Belt[], bricks: BrickState[] }>({ gears: [], belts: [], bricks: [] }); 
-  const hasMovedRef = useRef(false); 
+  const hasMovedRef = useRef(false);
+  const interactionTargetIdRef = useRef<string | null>(null);
+  const interactionTargetTypeRef = useRef<'gear' | 'brick' | null>(null);
 
   const workspaceRef = useRef<HTMLDivElement>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -485,8 +490,10 @@ const App: React.FC = () => {
     if (e.touches.length !== 1) return;
     e.stopPropagation(); 
 
-    setSelectedId(id);
-    setSelectedBrickId(null);
+    // Don't select immediately
+    interactionTargetIdRef.current = id;
+    interactionTargetTypeRef.current = 'gear';
+
     const gear = gears.find(g => g.id === id);
     if (gear) {
         if (gear.fixed) return; // Fixed gears cannot be dragged
@@ -505,8 +512,10 @@ const App: React.FC = () => {
     if (e.touches.length !== 1) return;
     e.stopPropagation();
 
-    setSelectedBrickId(id);
-    setSelectedId(null);
+    // Don't select immediately
+    interactionTargetIdRef.current = id;
+    interactionTargetTypeRef.current = 'brick';
+
     const brick = bricks.find(b => b.id === id);
     if (brick) {
         if (brick.fixed) return; // Fixed bricks cannot be dragged
@@ -720,7 +729,6 @@ const App: React.FC = () => {
             if (g1 && g2) {
                  if (checkBeltObstruction(g1, g2, bricks)) {
                      // Belt blocked by obstacle
-                     // Optional: Play error sound?
                      return;
                  }
             }
@@ -740,8 +748,9 @@ const App: React.FC = () => {
         return;
     }
 
-    setSelectedId(id);
-    setSelectedBrickId(null);
+    // DO NOT select immediately to prevent panel from opening on drag
+    interactionTargetIdRef.current = id;
+    interactionTargetTypeRef.current = 'gear';
 
     const gear = gears.find(g => g.id === id);
     if (gear) {
@@ -760,8 +769,9 @@ const App: React.FC = () => {
     e.stopPropagation();
     if (e.button !== 0) return;
 
-    setSelectedBrickId(id);
-    setSelectedId(null);
+    // DO NOT select immediately to prevent panel from opening on drag
+    interactionTargetIdRef.current = id;
+    interactionTargetTypeRef.current = 'brick';
 
     const brick = bricks.find(b => b.id === id);
     if (brick) {
@@ -804,6 +814,22 @@ const App: React.FC = () => {
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
     
+    // Handle Click-to-Select Logic
+    if (!hasMovedRef.current && interactionTargetIdRef.current) {
+        if (interactionTargetTypeRef.current === 'gear') {
+            setSelectedId(interactionTargetIdRef.current);
+            setSelectedBrickId(null);
+            setIsPropertiesOpen(true); // Open persistent drawer
+        } else if (interactionTargetTypeRef.current === 'brick') {
+            setSelectedBrickId(interactionTargetIdRef.current);
+            setSelectedId(null);
+            setIsPropertiesOpen(false); // Bricks have no properties (yet), close drawer or keep open empty? User only asked about Gears/Components.
+        }
+        // If we just clicked (didn't drag), reset the interaction target immediately
+        interactionTargetIdRef.current = null;
+        interactionTargetTypeRef.current = null;
+    }
+
     if (draggingAxleId) {
       setGears(prev => {
         const movingAxleGears = prev.filter(g => g.axleId === draggingAxleId);
@@ -828,17 +854,13 @@ const App: React.FC = () => {
         }
 
         // 2. Check Connected Belt Obstruction
-        // For every gear moving, check its belts
         if (!collisionDetected) {
              const movingIds = new Set(movingAxleGears.map(g => g.id));
              for (const belt of belts) {
                  if (movingIds.has(belt.sourceId) || movingIds.has(belt.targetId)) {
-                     // Get positions of both gears. 
-                     // Note: One moves, one might stay, or both move if on same axle (unlikely for belt but possible)
                      let g1 = prev.find(g => g.id === belt.sourceId)!;
                      let g2 = prev.find(g => g.id === belt.targetId)!;
 
-                     // Apply prospective move
                      if (movingIds.has(g1.id)) g1 = { ...g1, x: g1.x + deltaX, y: g1.y + deltaY };
                      if (movingIds.has(g2.id)) g2 = { ...g2, x: g2.x + deltaX, y: g2.y + deltaY };
 
@@ -851,7 +873,6 @@ const App: React.FC = () => {
         }
 
         if (collisionDetected) {
-             // Revert entire axle to undo state
              const originalStateMap = new Map(undoRef.current.gears.map(og => [og.id, og]));
              return prev.map(g => {
                  if (g.axleId === draggingAxleId) {
@@ -889,6 +910,7 @@ const App: React.FC = () => {
       }
       setDraggingAxleId(null);
       hasMovedRef.current = false;
+      interactionTargetIdRef.current = null; // Clear after drag end
 
     } else if (draggingBrickId) {
         setBricks(prev => {
@@ -914,6 +936,7 @@ const App: React.FC = () => {
         }
         setDraggingBrickId(null);
         hasMovedRef.current = false;
+        interactionTargetIdRef.current = null; // Clear after drag end
     }
   }, [draggingAxleId, draggingBrickId, pushHistory, belts, bricks]);
 
@@ -1191,6 +1214,7 @@ const App: React.FC = () => {
 
   const resetPlayground = () => {
     pushHistory(gears, belts, bricks);
+    setIsPropertiesOpen(false);
     if (activeChallengeId) {
         loadChallengeState(activeChallengeId);
         setChallengeSuccess(false);
@@ -1464,6 +1488,11 @@ const App: React.FC = () => {
         </div>
       </div>
 
+      {/* Made with Love Footer */}
+      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-[var(--text-secondary)] opacity-50 pointer-events-none font-mono tracking-widest uppercase z-10">
+         Made with <span className="text-red-500 font-bold">love</span> by STEAM SQUAD
+      </div>
+
       <Sidebar 
         onDragStart={handleSidebarDragStart} 
         onAddGear={handleAddGearFromSidebar}
@@ -1576,6 +1605,16 @@ const App: React.FC = () => {
           onTouchEnd={handleWorkspaceTouchEnd}
           onTouchCancel={handleWorkspaceTouchEnd}
         >
+            {/* Logo Overlay */}
+            <div className="absolute inset-0 pointer-events-none z-[1]" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img 
+                    src="logo.png" 
+                    alt=""
+                    className={`max-w-[60%] max-h-[60%] object-contain transition-all duration-500 ${theme === 'light' ? 'mix-blend-multiply opacity-10' : 'mix-blend-screen opacity-25'}`}
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+            </div>
+
            <svg className="w-full h-full block relative z-10">
              <defs>
                 <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -1584,155 +1623,141 @@ const App: React.FC = () => {
                 <pattern id="hazard-pattern" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
                     <rect width="5" height="10" fill="#000000" opacity="0.5"/>
                 </pattern>
+                <pattern id="striped-pattern" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                    <rect width="2" height="10" fill="#000000" opacity="0.3"/>
+                </pattern>
                 <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
                    <path d="M 0 0 L 6 3 L 0 6" fill="none" stroke="var(--gear-stroke)" strokeWidth="1" />
                 </marker>
              </defs>
              <g transform={`translate(${view.x}, ${view.y}) scale(${view.scale})`}>
                 <rect id="grid-bg" x="-50000" y="-50000" width="100000" height="100000" fill="url(#grid)" className="pointer-events-none" />
-                {gears.length === 0 && bricks.length === 0 && (<text x="50%" y="50%" textAnchor="middle" fill="var(--text-muted)" fontSize="24" fontWeight="bold" fontFamily="monospace" letterSpacing="0.2em" className="pointer-events-none">{t.initialize}</text>)}
+                {gears.length === 0 && bricks.length === 0 && (<text x="50%" y="50%" textAnchor="middle" fill="var(--text-muted)" fontSize="24" fontWeight="bold" fontFamily="monospace" letterSpacing="0.2em" className="pointer-events-none opacity-20 select-none">{t.initialize}</text>)}
                 
+                {/* Render Bricks (Sorted for stacking) */}
                 {sortedBricksForRender.map(brick => (
-                    <BrickComponent
-                        key={brick.id}
-                        brick={brick}
-                        isSelected={selectedBrickId === brick.id}
-                        theme={theme}
-                        onMouseDown={handleBrickMouseDown}
-                        onTouchStart={handleBrickTouchStart}
-                        onDoubleClick={rotateBrick}
-                        onDelete={deleteBrick}
-                    />
+                  <BrickComponent 
+                    key={brick.id} 
+                    brick={brick} 
+                    isSelected={selectedBrickId === brick.id}
+                    theme={theme}
+                    onMouseDown={handleBrickMouseDown}
+                    onTouchStart={handleBrickTouchStart}
+                    onDoubleClick={rotateBrick}
+                    onDelete={deleteBrick}
+                  />
                 ))}
 
+                {/* Render Belts */}
                 {belts.map(belt => {
-                    const g1 = gears.find(g => g.id === belt.sourceId);
-                    const g2 = gears.find(g => g.id === belt.targetId);
-                    if (g1 && g2) {
-                        const path = generateBeltPath(g1.x, g1.y, GEAR_DEFS[g1.type].radius, g2.x, g2.y, GEAR_DEFS[g2.type].radius);
-                        const animSpeed = Math.abs(g1.rpm) > 0 ? (200 / Math.abs(g1.rpm)) : 0;
-                        return (
-                          <g key={belt.id}>
-                              <path d={path} fill="none" stroke="#334155" strokeWidth="6" opacity="0.9" />
-                              <path d={path} fill="none" stroke="#FACC15" strokeWidth="3" strokeDasharray="10,10"
-                                style={{ animation: animSpeed > 0 ? `dash ${animSpeed}s linear infinite` : 'none', animationDirection: g1.direction === 1 ? 'normal' : 'reverse' }}
-                              />
-                              <style>{`@keyframes dash { to { stroke-dashoffset: -20; } }`}</style>
-                          </g>
-                        );
-                    }
-                    return null;
+                  const g1 = gears.find(g => g.id === belt.sourceId);
+                  const g2 = gears.find(g => g.id === belt.targetId);
+                  if (!g1 || !g2) return null;
+                  const r1 = GEAR_DEFS[g1.type].radius;
+                  const r2 = GEAR_DEFS[g2.type].radius;
+                  const path = generateBeltPath(g1.x, g1.y, r1, g2.x, g2.y, r2);
+                  return (
+                    <g key={belt.id} onClick={(e) => { 
+                        if (e.shiftKey || e.metaKey) {
+                             pushHistory(gears, belts, bricks);
+                             setBelts(prev => prev.filter(b => b.id !== belt.id));
+                             updatePhysics(gears, belts.filter(b => b.id !== belt.id));
+                        }
+                    }}>
+                        <path d={path} fill="none" stroke="#334155" strokeWidth="14" strokeLinecap="round" strokeLinejoin="round" className="opacity-60 hover:opacity-100 transition-opacity cursor-pointer" />
+                        <path d={path} fill="none" stroke="#facc15" strokeWidth="4" strokeDasharray="8 8" className="animate-dash" />
+                    </g>
+                  );
                 })}
 
-                {gears.map((gear) => gear.connectedTo.map((otherId) => { if (gear.id < otherId) { const other = gears.find((g) => g.id === otherId); if (other) { return (<line key={`link-${gear.id}-${other.id}`} x1={gear.x} y1={gear.y} x2={other.x} y2={other.y} stroke="var(--gear-stroke)" strokeWidth="1.5" strokeDasharray="5,5" strokeOpacity="0.4" strokeLinecap="round" className="pointer-events-none" />); } } return null; }))}
-                
+                {/* Render Gears */}
                 {sortedGearsForRender.map(gear => (
-                <GearComponent 
+                  <GearComponent 
                     key={gear.id} 
                     gear={gear} 
-                    isSelected={selectedId === gear.id}
+                    isSelected={selectedId === gear.id} 
                     isObjectiveTarget={highlightedGearIds.includes(gear.id)}
-                    roleHighlight={selectedId ? null : getGearRole(gear)}
+                    roleHighlight={getGearRole(gear)}
                     axleMates={gears.filter(g => g.axleId === gear.axleId && g.id !== gear.id)}
                     showSpecs={showSpecs}
                     showRatio={showRatio}
                     showRpm={showRpm}
-                    showTorque={showTorque} 
+                    showTorque={showTorque}
                     lang={lang}
                     theme={theme}
-                    onMouseDown={handleGearMouseDown}
+                    onMouseDown={handleGearMouseDown} 
                     onTouchStart={handleGearTouchStart}
-                    onClick={(e, id) => { e.stopPropagation(); setSelectedId(id); }}
-                />
+                    onClick={() => {}}
+                  />
                 ))}
+                
+                {/* Belt Creation Line */}
+                {beltSourceId && (
+                    (() => {
+                        const g = gears.find(g => g.id === beltSourceId);
+                        if(!g) return null;
+                        // We need mouse pos here, but in React that's hard without state. 
+                        // Visual feedback is tricky without track. 
+                        // For now, we rely on the "Belt Mode" banner.
+                        return (
+                            <circle cx={g.x} cy={g.y} r={GEAR_DEFS[g.type].radius + 10} fill="none" stroke="#a855f7" strokeWidth="4" strokeDasharray="10 5" className="animate-spin-slow" />
+                        )
+                    })()
+                )}
+
              </g>
            </svg>
-           
-           {/* Logo Overlay */}
-           <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0">
-              <img 
-                  src="logo.png" 
-                  alt="" 
-                  className={`
-                      w-[60%] h-[60%] object-contain 
-                      transition-all duration-500
-                      ${theme === 'light' ? 'opacity-10 mix-blend-multiply' : 'opacity-25 mix-blend-screen'}
-                  `}
-                  onError={(e) => { 
-                    console.warn("Logo failed to load. Using fallback.");
-                    e.currentTarget.style.display = 'none'; 
-                  }}
-              />
-           </div>
-        </div>
-        
-        {currentChallenge && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 w-full max-w-4xl px-4 pointer-events-none">
-             <div 
-                className={`backdrop-blur-md border-t-4 rounded-3xl shadow-2xl p-8 pointer-events-auto relative overflow-hidden transition-all duration-500`}
-                style={{
-                    backgroundColor: challengeSuccess ? 'rgba(20, 83, 45, 0.95)' : 'var(--bg-panel-translucent)',
-                    borderColor: challengeSuccess ? '#22c55e' : 'var(--text-accent)'
-                }}
-             >
-                <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-                   <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className={`text-sm font-bold px-3 py-1 rounded-lg border-2 uppercase tracking-wider ${challengeSuccess ? 'bg-green-800 text-green-200 border-green-600' : 'bg-cyan-900/30 text-cyan-400 border-cyan-400'}`}>
-                            {t.mission} #{currentChallenge.id}
-                        </span>
-                        <h2 className="text-3xl font-bold leading-none tracking-tight" style={{ color: 'var(--text-primary)' }}>
-                            {lang === 'zh-TW' ? currentChallenge.titleZh : currentChallenge.title}
-                        </h2>
-                      </div>
-                      <p className="text-lg opacity-80 font-medium max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
-                          {lang === 'zh-TW' ? currentChallenge.descriptionZh : currentChallenge.description}
-                      </p>
-                      
-                      {challengeSuccess && (
-                          <div className="mt-6 animate-in slide-in-from-bottom-4 fade-in duration-500">
-                              <p className="text-xl font-bold text-green-400 flex items-center gap-3 mb-4">
-                                  <span className="text-3xl">🎉</span> {t.missionAccomplished}
-                              </p>
-                              <div className="flex gap-4">
-                                  {!isLastChallenge && (
-                                      <button 
-                                          onClick={handleNextLevel}
-                                          className="px-8 py-4 bg-green-600 hover:bg-green-500 text-white text-lg font-bold rounded-2xl shadow-xl shadow-green-900/20 transition-all hover:scale-105 active:scale-95 border-2 border-green-400"
-                                      >
-                                          {t.nextMission}
-                                      </button>
-                                  )}
-                                  {isLastChallenge && (
-                                       <div className="px-8 py-4 bg-yellow-600 text-white text-lg font-bold rounded-2xl shadow-xl border-2 border-yellow-400">
-                                          {t.finishAll}
-                                       </div>
-                                  )}
-                              </div>
-                          </div>
-                      )}
-                   </div>
-                   
-                   {/* Decorative Gears in Background of Card */}
-                   <div className="absolute -right-12 -bottom-12 opacity-10 text-9xl animate-spin-slow pointer-events-none">⚙️</div>
-                </div>
-             </div>
-          </div>
-        )}
 
-        {selectedId && (
-          <GearProperties 
-            gear={gears.find(g => g.id === selectedId)!} 
+           {/* Mission Control / Success Overlay */}
+            {activeChallengeId && (
+                <div className="absolute top-6 right-6 z-30">
+                    <div className={`backdrop-blur-md p-6 rounded-2xl shadow-2xl border-2 transition-all duration-500 ${challengeSuccess ? 'bg-green-900/90 border-green-500 scale-110' : 'bg-[var(--bg-panel-translucent)] border-[var(--border-color)]'}`}>
+                        <div className="flex justify-between items-start mb-2 gap-8">
+                            <div>
+                                <h2 className="text-xs font-bold uppercase tracking-widest mb-1 opacity-70" style={{ color: challengeSuccess ? '#fff' : 'var(--text-secondary)' }}>{t.mission}</h2>
+                                <h1 className="text-2xl font-black tracking-tight" style={{ color: challengeSuccess ? '#fff' : 'var(--text-primary)' }}>
+                                    {lang === 'zh-TW' ? currentChallenge?.titleZh : currentChallenge?.title}
+                                </h1>
+                            </div>
+                            <div className={`text-3xl ${challengeSuccess ? 'animate-bounce' : 'grayscale opacity-50'}`}>
+                                {challengeSuccess ? '🏆' : '🎯'}
+                            </div>
+                        </div>
+                        
+                        {challengeSuccess ? (
+                            <div className="animate-in fade-in zoom-in duration-300 mt-4">
+                                <div className="text-green-200 font-bold mb-4 text-sm">{t.missionAccomplished}</div>
+                                <div className="flex flex-col gap-2">
+                                    <button 
+                                        onClick={handleNextLevel}
+                                        className="w-full py-3 bg-white text-green-900 rounded-xl font-black shadow-lg hover:scale-105 active:scale-95 transition-transform uppercase tracking-wide text-sm flex items-center justify-center gap-2"
+                                    >
+                                        {isLastChallenge ? t.finishAll : t.nextMission}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                           <p className="text-sm leading-relaxed opacity-80 mt-2 max-w-[250px]" style={{ color: 'var(--text-secondary)' }}>
+                               {lang === 'zh-TW' ? currentChallenge?.descriptionZh : currentChallenge?.description}
+                           </p>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+
+        {/* Properties Drawer */}
+        <GearProperties 
+            gear={selectedGear} 
             allGears={gears}
             onUpdate={updateGear} 
             onAddSibling={addGearOnSameAxle}
             onConnectBelt={handleGearConnectBeltStart}
             onDelete={deleteGear}
-            onClose={() => setSelectedId(null)}
+            isOpen={isPropertiesOpen}
+            onToggle={() => setIsPropertiesOpen(!isPropertiesOpen)}
             lang={lang}
-          />
-        )}
+        />
       </div>
     </div>
   );

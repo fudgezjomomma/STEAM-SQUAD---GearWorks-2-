@@ -122,7 +122,7 @@ export const GearComponent: React.FC<GearProps> = ({
         <path 
             d={pathData} 
             fill={gearColor} 
-            fillOpacity={isDark ? "0.65" : "0.85"}
+            fillOpacity={theme === 'steam' ? "0.9" : (isDark ? "0.65" : "0.85")}
             fillRule="evenodd" 
             stroke="none" 
             className="drop-shadow-sm"
