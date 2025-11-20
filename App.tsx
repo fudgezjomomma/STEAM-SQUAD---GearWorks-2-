@@ -1,8 +1,3 @@
-
-
-
-
-
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Sidebar } from './components/Sidebar';
@@ -1519,12 +1514,14 @@ const App: React.FC = () => {
                   src="/logo.png" 
                   alt="Company Logo" 
                   className={`
-                      w-[40%] h-[40%] object-contain 
+                      w-[60%] h-[60%] object-contain 
                       transition-all duration-500
-                      ${theme === 'light' ? 'opacity-[0.05] mix-blend-multiply' : 'opacity-[0.05] mix-blend-screen'}
-                      grayscale
+                      ${theme === 'light' ? 'opacity-10 mix-blend-multiply' : 'opacity-25 mix-blend-screen'}
                   `}
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  onError={(e) => { 
+                    console.warn("Logo failed to load. Ensure public/logo.png exists.");
+                    e.currentTarget.style.display = 'none'; 
+                  }}
               />
            </div>
 
