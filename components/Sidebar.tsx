@@ -41,24 +41,42 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick' }> = ({ le
     const isBeam = type === 'beam';
     const color = isBeam ? '#64748B' : '#475569';
     
-    // Calculate SVG dimensions
-    const totalLength = (length - 1) * HOLE_SPACING + BRICK_WIDTH;
-    const totalHeight = BRICK_WIDTH + (isBeam ? 0 : 4);
+    // Correct logic mirroring BrickComponent
+    const holeCount = isBeam ? length : Math.max(1, length - 1);
+    const studCount = isBeam ? 0 : length;
+
+    // Calculate visual bounds
+    let rectX, rectWidth;
+    if (isBeam) {
+        const radius = BRICK_WIDTH / 2; 
+        rectX = -radius;
+        rectWidth = ((length - 1) * HOLE_SPACING) + BRICK_WIDTH;
+    } else {
+        rectX = -HOLE_SPACING;
+        rectWidth = length * HOLE_SPACING;
+    }
+
     const padding = 10;
-    const offsetX = BRICK_WIDTH / 2;
-    const offsetY = BRICK_WIDTH / 2 + (isBeam ? 0 : 4);
+    // ViewBox logic: We need to contain rectX -> rectX + rectWidth
+    // The drawing assumes origin at (0,0) for first hole.
+    // We need to shift the origin so the brick is centered in SVG.
+    const totalWidth = rectWidth;
+    const totalHeight = BRICK_WIDTH + (isBeam ? 0 : 4);
+    
+    const shiftX = -rectX + padding; // shift so rectX is at padding
+    const shiftY = BRICK_WIDTH/2 + (isBeam ? 0 : 4);
 
     return (
         <svg 
-            viewBox={`-${padding} -${padding} ${totalLength + padding*2} ${totalHeight + padding*2}`} 
+            viewBox={`0 0 ${totalWidth + padding*2} ${totalHeight + padding*2}`} 
             className="w-full max-h-16 drop-shadow-sm overflow-visible pointer-events-none"
         >
-            <g transform={`translate(${offsetX}, ${offsetY})`}>
+            <g transform={`translate(${shiftX}, ${shiftY})`}>
                 {/* Studs */}
-                {!isBeam && Array.from({ length }).map((_, i) => (
+                {!isBeam && Array.from({ length: studCount }).map((_, i) => (
                     <rect 
                         key={`stud-${i}`}
-                        x={i * HOLE_SPACING - 10}
+                        x={(i * HOLE_SPACING) - (HOLE_SPACING / 2) - 10}
                         y={-BRICK_WIDTH/2 - 4}
                         width={20}
                         height={4}
@@ -69,16 +87,16 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick' }> = ({ le
                 
                 {/* Body */}
                 <rect 
-                    x={-BRICK_WIDTH/2} 
+                    x={rectX} 
                     y={-BRICK_WIDTH/2} 
-                    width={totalLength} 
+                    width={rectWidth} 
                     height={BRICK_WIDTH} 
                     rx={isBeam ? BRICK_WIDTH/2 : 2} 
                     fill={color}
                 />
 
                 {/* Holes */}
-                {Array.from({ length }).map((_, i) => (
+                {Array.from({ length: holeCount }).map((_, i) => (
                     <g key={i} transform={`translate(${i * HOLE_SPACING}, 0)`}>
                         <circle r={12} fill="rgba(0,0,0,0.2)" />
                         <circle r={8} fill="var(--bg-app)" />
@@ -236,7 +254,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                                 </button>
                             </div>
                         </div>
-                        <span className="font-mono font-bold mt-2 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{size}L Brick</span>
+                        <span className="font-mono font-bold mt-2 text-sm tracking-wider" style={{ color: 'var(--text-secondary)' }}>{size} Stud Brick</span>
                     </div>
                 ))}
                 </div>

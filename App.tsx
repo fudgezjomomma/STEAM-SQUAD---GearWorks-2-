@@ -286,7 +286,10 @@ const App: React.FC = () => {
                 const cos = Math.cos(rad);
                 const sin = Math.sin(rad);
                 
-                for(let i=0; i<b.length; i++) {
+                const isBeam = b.brickType === 'beam';
+                const loopLimit = isBeam ? b.length : Math.max(1, b.length - 1);
+
+                for(let i=0; i<loopLimit; i++) {
                     const hx = b.x + i * 40 * cos;
                     const hy = b.y + i * 40 * sin;
                     const d = Math.hypot(x - hx, y - hy);
@@ -825,8 +828,11 @@ const App: React.FC = () => {
         const rad = (brick.rotation * Math.PI) / 180;
         const cos = Math.round(Math.cos(rad)); 
         const sin = Math.round(Math.sin(rad)); 
+        
+        const isBeam = brick.brickType === 'beam';
+        const loopLimit = isBeam ? brick.length : Math.max(1, brick.length - 1);
 
-        for (let i = 0; i < brick.length; i++) {
+        for (let i = 0; i < loopLimit; i++) {
             const hx = brick.x + (i * HOLE_SPACING * cos);
             const hy = brick.y + (i * HOLE_SPACING * sin);
             

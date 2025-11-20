@@ -21,23 +21,36 @@ export const BrickComponent: React.FC<BrickProps> = ({
   onDelete
 }) => {
   
-  // Calculate geometry
-  // Origin is the center of the FIRST hole.
-  const totalLength = (brick.length - 1) * HOLE_SPACING + BRICK_WIDTH;
-  const offsetX = -BRICK_WIDTH / 2; // Start drawing relative to first hole center
-  const offsetY = -BRICK_WIDTH / 2;
+  // Logic Separation
+  // BEAM (Studless): length = number of holes. Origin = Center of First Hole.
+  // BRICK (Studded): length = number of studs. Number of holes = length - 1. Origin = Center of First Hole.
 
-  // SVG transform attribute must NOT have units
+  const isBeam = brick.brickType === 'beam';
+  const holeCount = isBeam ? brick.length : Math.max(1, brick.length - 1);
+  const studCount = isBeam ? 0 : brick.length;
+  
+  // Geometry Calculations
+  let rectX, rectWidth;
+  
+  if (isBeam) {
+      // Beam: Rounded capsule around holes 0 to N-1
+      // Start X: -Radius. End X: (N-1)*40 + Radius
+      const radius = BRICK_WIDTH / 2; // 17px
+      rectX = -radius;
+      rectWidth = ((brick.length - 1) * HOLE_SPACING) + BRICK_WIDTH;
+  } else {
+      // Brick: Rectangular block enclosing studs
+      // Studs are at -20, 20, 60... relative to First Hole (0)
+      // Brick body must cover from -40 to end
+      rectX = -HOLE_SPACING; // -40px
+      rectWidth = brick.length * HOLE_SPACING; // e.g., 2 studs * 40 = 80px width
+  }
+
+  const rectY = -BRICK_WIDTH / 2;
+  const displayColor = brick.color;
   const transform = `translate(${brick.x} ${brick.y}) rotate(${brick.rotation})`;
   
-  // Beam vs Brick Styles
-  const isBeam = brick.brickType === 'beam';
-  const cornerRadius = isBeam ? BRICK_CORNER_RADIUS : 2; // Rounded for beam, sharp for brick
-  
-  // Determine color based on type for better visual distinction if not overridden
-  const displayColor = brick.color;
-  
-  // Stud Geometry
+  // Stud Dimensions
   const studWidth = 20;
   const studHeight = 4;
 
@@ -51,15 +64,14 @@ export const BrickComponent: React.FC<BrickProps> = ({
       style={{ cursor: isSelected ? 'grabbing' : 'grab' }}
     >
       {/* STUDS (For Bricks) - Draw them "behind" (top edge) */}
-      {/* Studs are positioned relative to the holes. 
-          Hole center is at i * HOLE_SPACING. 
-          Stud center matches hole center x.
+      {/* Studs are located BETWEEN holes. 
+          Hole 0 is at 0. Stud 0 is at -20 (0 - 40/2). Stud 1 is at 20.
       */}
-      {!isBeam && Array.from({ length: brick.length }).map((_, i) => (
+      {!isBeam && Array.from({ length: studCount }).map((_, i) => (
           <rect 
              key={`stud-${i}`}
-             x={(i * HOLE_SPACING) - (studWidth / 2)}
-             y={offsetY - studHeight}
+             x={(i * HOLE_SPACING) - (HOLE_SPACING / 2) - (studWidth / 2)}
+             y={rectY - studHeight}
              width={studWidth}
              height={studHeight}
              fill={displayColor}
@@ -70,11 +82,11 @@ export const BrickComponent: React.FC<BrickProps> = ({
 
       {/* Main Body - explicit pointer-events to capture clicks */}
       <rect 
-        x={offsetX} 
-        y={offsetY} 
-        width={totalLength} 
+        x={rectX} 
+        y={rectY} 
+        width={rectWidth} 
         height={BRICK_WIDTH} 
-        rx={cornerRadius} 
+        rx={isBeam ? BRICK_CORNER_RADIUS : 2} 
         fill={displayColor}
         stroke={isSelected ? '#fff' : 'rgba(0,0,0,0.5)'}
         strokeWidth={isSelected ? 2 : 1}
@@ -83,7 +95,7 @@ export const BrickComponent: React.FC<BrickProps> = ({
       />
       
       {/* Holes - pass through events to the body */}
-      {Array.from({ length: brick.length }).map((_, i) => (
+      {Array.from({ length: holeCount }).map((_, i) => (
         <g key={i} transform={`translate(${i * HOLE_SPACING}, 0)`} style={{ pointerEvents: 'none' }}>
             {/* Outer rim of hole */}
             <circle r={12} fill="rgba(0,0,0,0.2)" />
@@ -94,18 +106,15 @@ export const BrickComponent: React.FC<BrickProps> = ({
         </g>
       ))}
 
-      {/* Delete Button (Only when selected) - Stabilized hover effect */}
+      {/* Delete Button (Only when selected) */}
       {isSelected && onDelete && (
         <g 
-            transform={`translate(${totalLength / 2 - BRICK_WIDTH/2}, -45)`} 
+            transform={`translate(${rectX + rectWidth/2}, -45)`} 
             onClick={(e) => { e.stopPropagation(); onDelete(brick.id); }}
             className="cursor-pointer"
             style={{ pointerEvents: 'all' }}
         >
-            {/* Larger invisible hit target for easier clicking */}
             <circle r={20} fill="transparent" />
-            
-            {/* Visible Button */}
             <circle 
                 r={14} 
                 fill="#ef4444" 
@@ -113,7 +122,6 @@ export const BrickComponent: React.FC<BrickProps> = ({
                 strokeWidth="2" 
                 className="transition-all duration-200 hover:fill-red-600"
             />
-            {/* Icon */}
             <path 
                 d="M -5 -5 L 5 5 M 5 -5 L -5 5" 
                 stroke="white" 
