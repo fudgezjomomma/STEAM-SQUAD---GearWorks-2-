@@ -1,3 +1,4 @@
+
 export type Language = 'en' | 'zh-TW';
 
 export const TRANSLATIONS = {
@@ -91,12 +92,16 @@ export const TRANSLATIONS = {
       welcomeDesc: "Let's take a quick tour to get you building mechanical masterpieces in no time.",
       sidebar: "Component Tray",
       sidebarDesc: "Drag gears, beams, and bricks from here onto the workspace.",
+      structure: "Structural Parts",
+      structureDesc: "Switch to the 'Structural' tab to find beams and bricks. Use these to build frames and mounts for your gears.",
       workspace: "The Workspace",
       workspaceDesc: "This is where you build. Pan by dragging the background. Zoom with the mouse wheel or buttons. Tap components to edit them.",
       toolbar: "Controls & Visualization",
       toolbarDesc: "Control simulation speed, zoom level, and toggle visual helpers like RPM labels, Torque values, and Role colors.",
       example: "Need Inspiration?",
       exampleDesc: "Click the 'Example' button to generate a random working machine instantly.",
+      properties: "Component Properties",
+      propertiesDesc: "Select any component to view its details. Use the wrench tab to toggle this panel and configure motors, loads, or stack gears.",
       missions: "Challenges",
       missionsDesc: "Test your skills! Open the Challenges tab to solve engineering puzzles ranging from simple ratios to complex torque problems.",
       lessons: "Interactive Lessons",
@@ -203,12 +208,16 @@ export const TRANSLATIONS = {
       welcomeDesc: "讓我們快速導覽，幫助您立刻開始建造機械傑作。",
       sidebar: "零件盤",
       sidebarDesc: "從這裡拖曳齒輪、橫梁和積木到工作區。",
+      structure: "結構零件",
+      structureDesc: "切換到「結構」標籤以尋找橫梁和積木。使用這些來為您的齒輪建立框架和底座。",
       workspace: "工作區",
       workspaceDesc: "這是您的建造區域。拖曳背景可平移，滑鼠滾輪可縮放。點擊組件進行編輯。",
       toolbar: "控制與視覺化",
       toolbarDesc: "控制模擬速度、縮放級別，並切換 RPM 標籤、扭力值和角色顏色等視覺輔助工具。",
       example: "需要靈感？",
       exampleDesc: "點擊「範例」按鈕可立即生成一個隨機運作的機器。",
+      properties: "零件屬性",
+      propertiesDesc: "選擇任何組件以查看其詳細資訊。使用扳手標籤切換此面板，配置馬達、負載或堆疊齒輪。",
       missions: "挑戰",
       missionsDesc: "測試您的技能！打開挑戰標籤，解決從簡單比率到複雜扭力挑戰的工程難題。",
       lessons: "互動課程",

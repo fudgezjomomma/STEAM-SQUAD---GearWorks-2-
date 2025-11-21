@@ -43,6 +43,7 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({
     <>
         {/* Toggle Button - Fixed Position (Outside Drawer) */}
         <button 
+            id="prop-toggle-btn"
             onClick={onToggle}
             className={`
                 fixed z-50 flex items-center justify-center 
@@ -87,6 +88,7 @@ export const GearProperties: React.FC<GearPropertiesProps> = ({
 
         {/* Sidebar / Drawer Container */}
         <div 
+            id="prop-panel"
             className={`
                 fixed z-40 shadow-2xl transition-transform duration-300 ease-in-out
                 flex flex-col

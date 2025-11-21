@@ -1,5 +1,4 @@
 
-
 import { GearType, GearDef } from './types';
 
 // Scaling factor: 2.5 pixels per tooth roughly gives good screen sizes
@@ -14,6 +13,7 @@ export const BRICK_CORNER_RADIUS = 17;
 // Technic Sizes
 export const BEAM_SIZES = [3, 5, 7, 9, 11, 13, 15]; // Odd numbers (Studless)
 export const BRICK_SIZES = [2, 4, 6, 8, 10, 12, 16]; // Even numbers (Studded)
+export const AXLE_SIZES = [3, 4, 5, 6, 8, 10, 12]; // Standard Axle lengths
 
 export const BRICK_THEME_COLORS = {
     dark: {
@@ -52,6 +52,17 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
         steam: '#64748B'  // Slate-500
     }
   },
+  [GearType.Bevel12]: {
+    type: GearType.Bevel12,
+    teeth: 12,
+    radius: 12 * MODULE_SCALE,
+    isBevel: true,
+    colors: {
+        dark: '#FCD34D',  // Amber-300 (Bevel Distinct)
+        light: '#D97706', // Amber-600
+        steam: '#52525B'  // Zinc-600 (Steam standard)
+    }
+  },
   [GearType.Medium]: {
     type: GearType.Medium,
     teeth: 16,
@@ -70,6 +81,17 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
         dark: '#22D3EE',  // Cyan-400
         light: '#10B981', // Emerald-500
         steam: '#475569'  // Slate-600
+    }
+  },
+  [GearType.Bevel20]: {
+    type: GearType.Bevel20,
+    teeth: 20,
+    radius: 20 * MODULE_SCALE,
+    isBevel: true,
+    colors: {
+        dark: '#FBBF24',  // Amber-400
+        light: '#B45309', // Amber-700
+        steam: '#3F3F46'  // Zinc-700
     }
   },
   [GearType.Large]: {
@@ -110,6 +132,17 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
         dark: '#A78BFA',  // Violet-400
         light: '#D946EF', // Fuchsia-500
         steam: '#18181B'  // Zinc-900
+    }
+  },
+  [GearType.Axle]: {
+    type: GearType.Axle,
+    teeth: 0,
+    radius: 5, // Visual thickness
+    isAxle: true,
+    colors: {
+        dark: '#475569', // Slate-600
+        light: '#94A3B8', // Slate-400
+        steam: '#3F3F46'  // Zinc-700
     }
   }
 };

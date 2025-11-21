@@ -13,9 +13,10 @@ interface TutorialOverlayProps {
   isOpen: boolean;
   onClose: () => void;
   lang: 'en' | 'zh-TW';
+  onStepChange?: (index: number) => void;
 }
 
-export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen, onClose, lang }) => {
+export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen, onClose, lang, onStepChange }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -26,6 +27,13 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen,
       setCurrentStepIndex(0);
     }
   }, [isOpen, steps]);
+
+  // Notify parent when step changes
+  useEffect(() => {
+      if (isOpen && onStepChange) {
+          onStepChange(currentStepIndex);
+      }
+  }, [currentStepIndex, isOpen, onStepChange]);
 
   const step = steps[currentStepIndex];
   
@@ -38,14 +46,30 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen,
   useEffect(() => {
     if (!isOpen || !step) return;
 
+    let animationFrameId: number;
+
     const updateRect = () => {
       if (step.targetId) {
         const el = document.getElementById(step.targetId);
         if (el) {
-          const r = el.getBoundingClientRect();
-          setRect(r);
-          // Ensure element is scrolled into view if needed
-          el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+          const newRect = el.getBoundingClientRect();
+          
+          // Only update state if values have changed to prevent infinite loops/excessive renders
+          setRect(prev => {
+              if (!prev) return newRect;
+              if (
+                  Math.abs(prev.x - newRect.x) < 1 && 
+                  Math.abs(prev.y - newRect.y) < 1 && 
+                  Math.abs(prev.width - newRect.width) < 1 && 
+                  Math.abs(prev.height - newRect.height) < 1
+              ) {
+                  return prev;
+              }
+              return newRect;
+          });
+          
+          // Only scroll into view once or if significantly off screen, handled by browser mostly
+          // el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
           return;
         }
       }
@@ -53,13 +77,18 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen,
       setRect(null);
     };
 
-    // Small delay to allow UI to render/settle
-    const timeout = setTimeout(updateRect, 100);
+    // Start tracking loop to handle animations (sliding panels, etc.)
+    const loop = () => {
+        updateRect();
+        animationFrameId = requestAnimationFrame(loop);
+    };
+    loop();
+
     window.addEventListener('resize', updateRect);
     
     return () => {
       window.removeEventListener('resize', updateRect);
-      clearTimeout(timeout);
+      cancelAnimationFrame(animationFrameId);
     };
   }, [currentStepIndex, isOpen, step]);
 
@@ -138,14 +167,14 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen,
       {/* We use a massive box-shadow on the highlight element to create the cutout effect */}
       {rect ? (
         <div 
-          className="absolute transition-all duration-500 ease-in-out rounded-xl pointer-events-none"
+          className="absolute transition-all duration-75 ease-linear rounded-xl pointer-events-none"
           style={{
             top: rect.top - 8,
             left: rect.left - 8,
             width: rect.width + 16,
             height: rect.height + 16,
             boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.75)',
-            border: '2px solid rgba(255, 255, 255, 0.5)'
+            border: '2px solid var(--text-accent)'
           }}
         ></div>
       ) : (
@@ -155,29 +184,38 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ steps, isOpen,
       {/* Tooltip Card */}
       <div 
         ref={containerRef}
-        className="absolute bg-[#0F2437] text-white p-6 rounded-2xl shadow-2xl border-2 border-[#22D3EE] max-w-sm w-full transition-all duration-500 flex flex-col gap-4"
-        style={tooltipStyle}
+        className="absolute p-6 rounded-2xl shadow-2xl border-2 max-w-sm w-full transition-all duration-300 flex flex-col gap-4"
+        style={{
+            ...tooltipStyle,
+            backgroundColor: 'var(--bg-panel)',
+            borderColor: 'var(--text-accent)',
+            color: 'var(--text-primary)'
+        }}
       >
         <div className="flex justify-between items-start">
-            <h3 className="text-xl font-bold text-[#22D3EE]">{step.title}</h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-white text-xs uppercase font-bold tracking-wider mt-1">
+            <h3 className="text-xl font-bold" style={{ color: 'var(--text-accent)' }}>{step.title}</h3>
+            <button onClick={onClose} className="text-xs uppercase font-bold tracking-wider mt-1 opacity-50 hover:opacity-100" style={{ color: 'var(--text-secondary)' }}>
                 {skipLabel}
             </button>
         </div>
         
-        <p className="text-gray-200 leading-relaxed text-sm">
+        <p className="leading-relaxed text-sm opacity-90" style={{ color: 'var(--text-primary)' }}>
             {step.description}
         </p>
 
-        <div className="flex justify-between items-center pt-2 mt-2 border-t border-gray-700">
-            <span className="text-xs font-mono text-gray-500">{currentStepIndex + 1} / {steps.length}</span>
+        <div className="flex justify-between items-center pt-2 mt-2 border-t" style={{ borderColor: 'var(--border-color)' }}>
+            <span className="text-xs font-mono opacity-60" style={{ color: 'var(--text-secondary)' }}>{currentStepIndex + 1} / {steps.length}</span>
             <div className="flex gap-3">
                 {currentStepIndex > 0 && (
-                    <button onClick={handleBack} className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm font-bold transition-colors">
+                    <button onClick={handleBack} className="px-4 py-2 rounded-lg text-sm font-bold transition-colors hover:brightness-110" style={{ backgroundColor: 'var(--button-bg)', color: 'var(--text-primary)' }}>
                         {backLabel}
                     </button>
                 )}
-                <button onClick={handleNext} className="px-6 py-2 rounded-lg bg-[#22D3EE] hover:bg-[#06b6d4] text-[#0F2437] text-sm font-bold transition-colors shadow-lg shadow-cyan-500/20">
+                <button 
+                    onClick={handleNext} 
+                    className="px-6 py-2 rounded-lg text-sm font-bold transition-colors shadow-lg hover:brightness-110"
+                    style={{ backgroundColor: 'var(--text-accent)', color: 'var(--bg-panel)' }}
+                >
                     {currentStepIndex === steps.length - 1 ? finishLabel : nextLabel}
                 </button>
             </div>

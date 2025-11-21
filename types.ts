@@ -1,14 +1,16 @@
 
-
 export enum GearType {
   Small = 'Small',         // 8T
   Twelve = 'Twelve',       // 12T
+  Bevel12 = 'Bevel12',     // 12T Bevel
   Medium = 'Medium',       // 16T
   MediumLarge = 'MediumLarge', // 20T
+  Bevel20 = 'Bevel20',     // 20T Bevel
   Large = 'Large',         // 24T
   TwentyEight = 'TwentyEight', // 28T
   ThirtySix = 'ThirtySix', // 36T
-  ExtraLarge = 'ExtraLarge' // 40T
+  ExtraLarge = 'ExtraLarge', // 40T
+  Axle = 'Axle'            // Drive Shaft
 }
 
 export interface GearDef {
@@ -20,6 +22,8 @@ export interface GearDef {
     light: string;
     steam: string;
   };
+  isBevel?: boolean; // Helper flag
+  isAxle?: boolean; // Helper flag
 }
 
 export interface Belt {
@@ -28,15 +32,27 @@ export interface Belt {
   targetId: string;
 }
 
+// flat: Standard 2D gear
+// bevel_up: Bevel gear located ABOVE a flat gear (Visual: Horizontal, wide side down)
+// bevel_right: Bevel gear located RIGHT of a flat gear (Visual: Vertical, wide side left)
+// bevel_down: Bevel gear located BELOW a flat gear (Visual: Horizontal, wide side up)
+// bevel_left: Bevel gear located LEFT of a flat gear (Visual: Vertical, wide side right)
+export type GearOrientation = 'flat' | 'bevel_up' | 'bevel_right' | 'bevel_down' | 'bevel_left';
+
 export interface GearState {
   id: string;
   axleId: string; // Group ID for compound gears. Gears with same axleId rotate together.
   type: GearType;
+  length?: number; // For Axles only (in hole units)
   x: number;
   y: number;
-  rotation: number; // Current rotation in degrees
+  rotation: number; // Current rotation (Z-axis for Gears; Orientation for Axles)
+  step?: number;    // Animation phase (0-360) for Axles (Visual spin)
   fixed?: boolean; // Cannot be moved or deleted
   
+  // Bevel Logic
+  orientation?: GearOrientation; // Default is flat
+
   // connectivity logic
   connectedTo: string[]; // IDs of connected gears
   

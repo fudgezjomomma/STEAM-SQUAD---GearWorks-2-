@@ -101,6 +101,27 @@ export const generateGearPath = (teeth: number, radius: number): string => {
 };
 
 /**
+ * Generates Trapezoidal path for Side-View Bevel Gear
+ */
+export const generateBevelSideProfile = (radius: number): string => {
+    // Dimensions
+    const bottomWidth = radius * 2;
+    const topWidth = radius * 1.5;
+    const height = 20; // Thickness
+
+    const x1 = -bottomWidth / 2;
+    const x2 = bottomWidth / 2;
+    const x3 = topWidth / 2;
+    const x4 = -topWidth / 2;
+
+    const yBottom = height / 2;
+    const yTop = -height / 2;
+
+    // Trapezoid
+    return `M ${x1} ${yBottom} L ${x2} ${yBottom} L ${x3} ${yTop} L ${x4} ${yTop} Z`;
+};
+
+/**
  * Generates an SVG path for a belt connecting two gears (external tangents)
  */
 export const generateBeltPath = (
@@ -321,11 +342,21 @@ function processConnection(
         if (set.has(sourceAxleId)) set.add(targetAxleId);
     });
 
-    const teethIn = GEAR_DEFS[sourceGear.type].teeth;
-    const teethOut = GEAR_DEFS[targetGear.type].teeth;
+    const defSource = GEAR_DEFS[sourceGear.type];
+    const defTarget = GEAR_DEFS[targetGear.type];
     
-    const speedRatio = teethIn / teethOut;
-    const torqueRatio = teethOut / teethIn;
+    // Fix: Axles have 0 teeth, avoid div/0. Axles/Bevels transfer 1:1 if coupled this way
+    const teethIn = defSource.teeth || 1;
+    const teethOut = defTarget.teeth || 1;
+    
+    let speedRatio = teethIn / teethOut;
+    let torqueRatio = teethOut / teethIn;
+    
+    // If connecting via Axle (Driveshaft coupling), enforce 1:1 ratio
+    if (defSource.isAxle || defTarget.isAxle) {
+        speedRatio = 1;
+        torqueRatio = 1;
+    }
 
     const targetSpeed = sourceSpeed * speedRatio;
     const targetRpm = sourceRpm * speedRatio;

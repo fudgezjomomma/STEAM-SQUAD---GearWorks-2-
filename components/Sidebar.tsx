@@ -1,15 +1,17 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { GearType, Lesson } from '../types';
-import { GEAR_DEFS, BEAM_SIZES, BRICK_SIZES, HOLE_SPACING, BRICK_WIDTH, BRICK_THEME_COLORS } from '../constants';
+import { GEAR_DEFS, BEAM_SIZES, BRICK_SIZES, HOLE_SPACING, BRICK_WIDTH, BRICK_THEME_COLORS, AXLE_SIZES } from '../constants';
 import { generateGearPath } from '../utils/gearMath';
 import { CHALLENGES } from '../data/challenges';
 import { LESSONS } from '../data/lessons';
 import { TRANSLATIONS, Language } from '../utils/translations';
 
+export type SidebarTab = 'parts' | 'structure' | 'missions' | 'lessons';
+
 interface SidebarProps {
   onDragStart: (e: React.DragEvent, type: string, category: 'gear' | 'brick') => void;
-  onAddGear: (type: GearType) => void;
+  onAddGear: (type: GearType, length?: number) => void;
   onAddBrick: (length: number, type: 'beam' | 'brick') => void;
   activeChallengeId: number | null;
   onSelectChallenge: (id: number | null) => void;
@@ -19,6 +21,8 @@ interface SidebarProps {
   theme: 'dark' | 'light' | 'steam';
   isOpen: boolean;
   onToggle: () => void;
+  activeTab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
 }
 
 const PreviewGear: React.FC<{ def: any, theme: 'dark' | 'light' | 'steam' }> = ({ def, theme }) => {
@@ -46,11 +50,9 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'd
     const isBeam = type === 'beam';
     const color = BRICK_THEME_COLORS[theme][type];
     
-    // Correct logic mirroring BrickComponent
     const holeCount = isBeam ? length : Math.max(1, length - 1);
     const studCount = isBeam ? 0 : length;
 
-    // Calculate visual bounds
     let rectX, rectWidth;
     if (isBeam) {
         const radius = BRICK_WIDTH / 2; 
@@ -74,7 +76,6 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'd
             className="w-full max-h-16 drop-shadow-sm overflow-visible pointer-events-none"
         >
             <g transform={`translate(${shiftX}, ${shiftY})`}>
-                {/* Studs */}
                 {!isBeam && Array.from({ length: studCount }).map((_, i) => (
                     <rect 
                         key={`stud-${i}`}
@@ -86,8 +87,6 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'd
                         className="brightness-110"
                     />
                 ))}
-                
-                {/* Body */}
                 <rect 
                     x={rectX} 
                     y={-BRICK_WIDTH/2} 
@@ -96,8 +95,6 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'd
                     rx={isBeam ? BRICK_WIDTH/2 : 2} 
                     fill={color}
                 />
-
-                {/* Holes */}
                 {Array.from({ length: holeCount }).map((_, i) => (
                     <g key={i} transform={`translate(${i * HOLE_SPACING}, 0)`}>
                         <circle r={12} fill="rgba(0,0,0,0.2)" />
@@ -110,8 +107,7 @@ const PreviewBrick: React.FC<{ length: number, type: 'beam' | 'brick', theme: 'd
     );
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddBrick, activeChallengeId, onSelectChallenge, onStartLesson, completedChallenges, lang, theme, isOpen, onToggle }) => {
-  const [activeTab, setActiveTab] = useState<'parts' | 'structure' | 'missions' | 'lessons'>('parts');
+export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddBrick, activeChallengeId, onSelectChallenge, onStartLesson, completedChallenges, lang, theme, isOpen, onToggle, activeTab, onTabChange }) => {
   const t = TRANSLATIONS[lang];
   const isMobile = window.innerWidth < 768;
 
@@ -123,7 +119,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
             onClick={onToggle}
         />
 
-        {/* Toggle Tab / Handle */}
+        {/* Toggle Tab */}
         <div 
             className={`fixed z-[80] top-1/2 -translate-y-1/2 transition-all duration-300 flex items-center justify-center w-8 h-20 bg-[var(--bg-panel)] border border-[var(--border-color)] border-l-0 rounded-r-xl shadow-xl hover:bg-[var(--bg-app)] text-[var(--text-accent)] font-bold text-xl focus:outline-none cursor-pointer`}
             style={{ 
@@ -149,15 +145,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                 <span className="hidden sm:inline">{t.appTitle}</span>
                 <span className="sm:hidden">Gear Studio</span>
                 </h1>
-                {/* Mobile Close Button */}
                 <button onClick={onToggle} className="md:hidden p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
             </div>
             
-            {/* Tabs - 2 Column Grid */}
+            {/* Tabs */}
             <div id="sidebar-tabs" className="grid grid-cols-2 gap-2 mt-6 p-1.5 rounded-xl border" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)' }}>
               <button 
                 id="tab-parts"
-                onClick={() => setActiveTab('parts')}
+                onClick={() => onTabChange('parts')}
                 className={`py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-center`}
                 style={{ 
                     backgroundColor: activeTab === 'parts' ? 'var(--text-accent)' : 'transparent',
@@ -168,7 +163,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
               </button>
               <button 
                 id="tab-structure"
-                onClick={() => setActiveTab('structure')}
+                onClick={() => onTabChange('structure')}
                 className={`py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-center`}
                 style={{ 
                     backgroundColor: activeTab === 'structure' ? 'var(--text-accent)' : 'transparent',
@@ -179,7 +174,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
               </button>
               <button 
                 id="tab-missions"
-                onClick={() => setActiveTab('missions')}
+                onClick={() => onTabChange('missions')}
                 className={`py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-center`}
                 style={{ 
                     backgroundColor: activeTab === 'missions' ? 'var(--text-accent)' : 'transparent',
@@ -190,7 +185,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
               </button>
               <button 
                 id="tab-lessons"
-                onClick={() => setActiveTab('lessons')}
+                onClick={() => onTabChange('lessons')}
                 className={`py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-lg transition-all text-center`}
                 style={{ 
                     backgroundColor: activeTab === 'lessons' ? 'var(--text-accent)' : 'transparent',
@@ -205,8 +200,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
           {activeTab === 'parts' && (
             <div className="flex-1 overflow-y-auto p-4 animate-in fade-in slide-in-from-left-4 duration-300 no-scrollbar">
                <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>{t.componentTray}</p>
-              <div className="grid grid-cols-2 gap-4">
-                  {Object.values(GEAR_DEFS).map((def) => (
+              
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                  {Object.values(GEAR_DEFS).filter(d => !d.isAxle).map((def) => (
                     <div key={def.type} className="flex flex-col items-center">
                       <div 
                         className="w-full aspect-square flex items-center justify-center cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-2 rounded-full border-2 border-dashed hover:border-solid"
@@ -215,6 +211,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                         onDragStart={(e) => onDragStart(e, def.type, 'gear')}
                         onClick={() => onAddGear(def.type)}
                       >
+                        {def.isBevel && (
+                            <span className="absolute top-0 right-0 bg-amber-500 text-[9px] font-black px-1.5 py-0.5 rounded-full text-black shadow-sm z-10">
+                                BEVEL
+                            </span>
+                        )}
                         <div className="transform scale-75">
                              <PreviewGear def={def} theme={theme} />
                         </div>
@@ -226,9 +227,33 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                     </div>
                   ))}
               </div>
+              
+              <p className="text-sm font-bold uppercase tracking-widest text-center mb-6 border-b pb-4" style={{ color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}>Drive Shafts (Axles)</p>
+              <div className="grid grid-cols-2 gap-4">
+                  {AXLE_SIZES.map((size) => (
+                      <div key={`axle-${size}`} className="flex flex-col items-center">
+                           <div 
+                                className="w-full h-20 flex items-center justify-center cursor-pointer active:scale-95 hover:scale-105 transition-transform duration-200 relative group p-2 rounded-xl border-2 border-dashed hover:border-solid"
+                                style={{ backgroundColor: 'var(--bg-app)', borderColor: 'var(--border-color)' }}
+                                draggable={true}
+                                onDragStart={(e) => onDragStart(e, JSON.stringify({ type: GearType.Axle, length: size }), 'gear')}
+                                onClick={() => onAddGear(GearType.Axle, size)}
+                           >
+                                <div className="w-3/4 h-3 bg-slate-500 rounded-sm relative overflow-hidden">
+                                    <div className="absolute inset-0 bg-black/20" style={{ backgroundImage: 'linear-gradient(45deg, rgba(0,0,0,0.2) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2) 75%, transparent 75%, transparent)', backgroundSize: '10px 10px' }}></div>
+                                </div>
+                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button className="text-white text-xs px-3 py-1.5 rounded-lg shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110" style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }} onClick={(e) => { e.stopPropagation(); onAddGear(GearType.Axle, size); }} draggable={false}>{t.add}</button>
+                                </div>
+                           </div>
+                           <span className="font-mono font-bold mt-2 text-xs tracking-wider" style={{ color: 'var(--text-secondary)' }}>{size}L Axle</span>
+                      </div>
+                  ))}
+              </div>
             </div>
           )}
-
+          
+          {/* Structure, Missions, Lessons Tabs (Unchanged) */}
           {activeTab === 'structure' && (
             <div className="flex-1 overflow-y-auto p-6 space-y-8 animate-in fade-in slide-in-from-left-4 duration-300 no-scrollbar">
                 <div>
@@ -309,18 +334,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                        </h3>
                      </div>
                      <p className="text-sm leading-relaxed opacity-80" style={{ color: 'var(--text-primary)' }}>{desc}</p>
-                     
-                     {isActive && !isCompleted && (
-                       <div className="mt-4 text-sm font-bold flex items-center gap-2 animate-pulse" style={{ color: 'var(--text-accent)' }}>
-                         <span>🎯 {t.targeting}</span>
-                       </div>
-                     )}
-                     
-                     {isActive && isCompleted && (
-                       <div className="mt-4 text-sm font-bold text-green-500 flex items-center gap-2">
-                         <span>✓ {t.missionAccomplished}</span>
-                       </div>
-                     )}
                    </div>
                  );
                })}
@@ -341,13 +354,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                                onClick={() => onStartLesson(lesson)}
                            >
                                <div className="flex gap-3 items-center mb-2">
-                                    <div className="w-8 h-8 rounded-full flex items-center justify-center bg-cyan-900/50 text-cyan-400 font-bold text-xs border border-cyan-700">
+                                    <div 
+                                        className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border"
+                                        style={{ 
+                                            backgroundColor: 'var(--bg-app)', 
+                                            color: 'var(--text-accent)', 
+                                            borderColor: 'var(--text-accent)' 
+                                        }}
+                                    >
                                         {lesson.id.toUpperCase()}
                                     </div>
                                     <h3 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>{title}</h3>
                                </div>
                                <p className="text-sm leading-relaxed opacity-80 mb-4" style={{ color: 'var(--text-secondary)' }}>{desc}</p>
-                               <button className="w-full py-2 rounded-lg font-bold text-sm uppercase tracking-wide transition-colors bg-cyan-600 hover:bg-cyan-500 text-white">
+                               <button 
+                                   className="w-full py-2 rounded-lg font-bold text-sm uppercase tracking-wide transition-colors shadow-sm hover:opacity-90 active:scale-95"
+                                   style={{ 
+                                       backgroundColor: 'var(--text-accent)', 
+                                       color: theme === 'steam' ? '#18181B' : '#ffffff'
+                                   }}
+                               >
                                    {t.lessons.start}
                                </button>
                            </div>

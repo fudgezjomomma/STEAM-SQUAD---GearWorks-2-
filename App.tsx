@@ -1,12 +1,12 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, SidebarTab } from './components/Sidebar';
 import { GearComponent } from './components/GearComponent';
 import { BrickComponent } from './components/BrickComponent';
 import { GearProperties } from './components/GearProperties';
 import { TutorialOverlay, TutorialStep } from './components/TutorialOverlay';
-import { GearState, GearType, Belt, BrickState, Lesson } from './types';
+import { GearState, GearType, Belt, BrickState, Lesson, GearOrientation } from './types';
 import { GEAR_DEFS, SNAP_THRESHOLD, BASE_SPEED_MULTIPLIER, HOLE_SPACING, BEAM_SIZES, BRICK_WIDTH } from './constants';
 import { getDistance, propagatePhysics, generateBeltPath } from './utils/gearMath';
 import { CHALLENGES } from './data/challenges';
@@ -28,6 +28,64 @@ const lineIntersectsLine = (p0_x: number, p0_y: number, p1_x: number, p1_y: numb
     return false;
 }
 
+// Helper: Check if a point is on an axle (segment) with tolerance
+const isOverlappingAxle = (pointX: number, pointY: number, axle: GearState, tolerance: number = 10) => {
+    const len = (axle.length || 3) * HOLE_SPACING;
+    const isHorz = axle.rotation === 0; // Axle rotation is 0 or 90
+    
+    if (isHorz) {
+        // Horizontal: Y must match, X must be within range
+        if (Math.abs(pointY - axle.y) > tolerance) return false;
+        const minX = axle.x - len / 2;
+        const maxX = axle.x + len / 2;
+        return pointX >= minX - tolerance && pointX <= maxX + tolerance;
+    } else {
+        // Vertical: X must match, Y must be within range
+        if (Math.abs(pointX - axle.x) > tolerance) return false;
+        const minY = axle.y - len / 2;
+        const maxY = axle.y + len / 2;
+        return pointY >= minY - tolerance && pointY <= maxY + tolerance;
+    }
+};
+
+// Helper: Get closest valid mounting point on an axle
+const getClosestPointOnAxle = (x: number, y: number, axle: GearState) => {
+    const len = (axle.length || 3) * HOLE_SPACING;
+    const isHorz = axle.rotation === 0;
+    
+    if (isHorz) {
+        // Project X onto segment
+        const minX = axle.x - len / 2;
+        const maxX = axle.x + len / 2;
+        let clampedX = Math.max(minX, Math.min(maxX, x));
+        
+        // Snap to nearest HOLE_SPACING relative to center to align with studs
+        const relX = clampedX - axle.x;
+        const snappedRelX = Math.round(relX / 20) * 20;
+        clampedX = axle.x + snappedRelX;
+
+        if (clampedX < minX) clampedX = minX;
+        if (clampedX > maxX) clampedX = maxX;
+
+        return { x: clampedX, y: axle.y };
+    } else {
+        // Project Y onto segment
+        const minY = axle.y - len / 2;
+        const maxY = axle.y + len / 2;
+        let clampedY = Math.max(minY, Math.min(maxY, y));
+
+        const relY = clampedY - axle.y;
+        const snappedRelY = Math.round(relY / 20) * 20;
+        clampedY = axle.y + snappedRelY;
+
+        if (clampedY < minY) clampedY = minY;
+        if (clampedY > maxY) clampedY = maxY;
+
+        return { x: axle.x, y: clampedY };
+    }
+};
+
+
 const App: React.FC = () => {
   // Load initial settings from storage
   const initialSettings = useMemo(() => loadSettings(), []);
@@ -48,6 +106,7 @@ const App: React.FC = () => {
 
   const [draggingAxleId, setDraggingAxleId] = useState<string | null>(null);
   const [draggingBrickId, setDraggingBrickId] = useState<string | null>(null);
+  const [snapPreview, setSnapPreview] = useState<{x: number, y: number, rotation: number} | null>(null);
   
   const [globalRpm, setGlobalRpm] = useState(60); 
   
@@ -76,6 +135,7 @@ const App: React.FC = () => {
 
   // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('parts');
   
   // Mobile Toolbar State
   const [isMobileToolbarOpen, setIsMobileToolbarOpen] = useState(false);
@@ -101,21 +161,636 @@ const App: React.FC = () => {
   const hasMovedRef = useRef(false);
   const interactionTargetIdRef = useRef<string | null>(null);
   const interactionTargetTypeRef = useRef<'gear' | 'brick' | null>(null);
+  
+  // Drag State for grouping
+  const dragStateRef = useRef<Map<string, { x: number, y: number }>>(new Map());
 
   const workspaceRef = useRef<HTMLDivElement>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  const currentChallenge = activeChallengeId ? CHALLENGES.find(c => c.id === activeChallengeId) : null;
+  const isLastChallenge = currentChallenge ? currentChallenge.id === CHALLENGES[CHALLENGES.length - 1].id : false;
+  const selectedGear = selectedId ? gears.find(g => g.id === selectedId) : undefined;
+
+  // Derived State for Rendering Order
+  const sortedGearsForRender = useMemo(() => {
+    return [...gears].sort((a, b) => {
+        if (a.axleId === b.axleId) {
+             const defA = GEAR_DEFS[a.type];
+             const defB = GEAR_DEFS[b.type];
+             if (defA.isAxle) return -1;
+             if (defB.isAxle) return 1;
+             return defB.radius - defA.radius;
+        }
+        return 0;
+    });
+  }, [gears]);
+
+  const sortedBricksForRender = useMemo(() => bricks, [bricks]);
+
+  // --- Functions Definitions ---
+  const pushHistory = useCallback((currentGears: GearState[], currentBelts: Belt[], currentBricks: BrickState[]) => {
+    setHistory(prev => [...prev, { gears: currentGears, belts: currentBelts, bricks: currentBricks }]);
+    setFuture([]); 
+  }, []);
+
+  const performUndo = useCallback(() => {
+    setHistory(prevHistory => {
+        if (prevHistory.length === 0) return prevHistory;
+        const previousState = prevHistory[prevHistory.length - 1];
+        const newHistory = prevHistory.slice(0, -1);
+        
+        setFuture(prevFuture => [{ gears, belts, bricks }, ...prevFuture]);
+        setGears(previousState.gears);
+        setBelts(previousState.belts);
+        setBricks(previousState.bricks);
+        return newHistory;
+    });
+  }, [gears, belts, bricks]);
+
+  const performRedo = useCallback(() => {
+    setFuture(prevFuture => {
+        if (prevFuture.length === 0) return prevFuture;
+        const nextState = prevFuture[0];
+        const newFuture = prevFuture.slice(1);
+
+        setHistory(prevHistory => [...prevHistory, { gears, belts, bricks }]);
+        setGears(nextState.gears);
+        setBelts(nextState.belts);
+        setBricks(nextState.bricks);
+        return newFuture;
+    });
+  }, [gears, belts, bricks]);
+
+  const recalculateConnections = useCallback((currentGears: GearState[]) => {
+      // Reset connections for recalculation
+      const gearsWithCleared = currentGears.map(g => ({ ...g, connectedTo: [] as string[] }));
+      
+      // 1. Pairwise Mesh Detection
+      for (let i = 0; i < gearsWithCleared.length; i++) {
+          for (let j = i + 1; j < gearsWithCleared.length; j++) {
+              const g1 = gearsWithCleared[i];
+              const g2 = gearsWithCleared[j];
+              
+              if (g1.axleId === g2.axleId) continue; // Same axle doesn't mesh
+              
+              const def1 = GEAR_DEFS[g1.type];
+              const def2 = GEAR_DEFS[g2.type];
+              
+              // Bevel Logic:
+              const isBevel1 = def1.isBevel;
+              const isBevel2 = def2.isBevel;
+              
+              // Determine if Flat or Vertical
+              const isFlat1 = !g1.orientation || g1.orientation === 'flat';
+              const isFlat2 = !g2.orientation || g2.orientation === 'flat';
+
+              const dist = getDistance(g1.x, g1.y, g2.x, g2.y);
+              
+              // CASE 1: Standard Flat Mesh (Spur Gears)
+              if (isFlat1 && isFlat2 && !def1.isAxle && !def2.isAxle) {
+                  const idealDist = def1.radius + def2.radius;
+                  if (Math.abs(dist - idealDist) < 5) {
+                      g1.connectedTo.push(g2.id);
+                      g2.connectedTo.push(g1.id);
+                  }
+                  continue;
+              }
+
+              // CASE 2: Bevel to Flat (Corner)
+              let flatG = null;
+              let bevelG = null;
+              let flatDef = null;
+              let bevelDef = null;
+              
+              if (isFlat1 && !isFlat2 && isBevel2) { flatG = g1; flatDef = def1; bevelG = g2; bevelDef = def2; }
+              else if (isFlat2 && !isFlat1 && isBevel1) { flatG = g2; flatDef = def2; bevelG = g1; bevelDef = def1; }
+
+              if (flatG && bevelG && flatDef && bevelDef) {
+                   const idealDist = flatDef.radius + 10; 
+                   
+                   // Check Distance Tolerance
+                   if (Math.abs(dist - idealDist) < 12) {
+                        // Check Direction!
+                        const dx = bevelG.x - flatG.x;
+                        const dy = bevelG.y - flatG.y;
+                        const o = bevelG.orientation;
+                        
+                        if (o === 'bevel_up' && dy > 5 && Math.abs(dx) < 10) {
+                             g1.connectedTo.push(g2.id); g2.connectedTo.push(g1.id);
+                        }
+                        else if (o === 'bevel_down' && dy < -5 && Math.abs(dx) < 10) {
+                             g1.connectedTo.push(g2.id); g2.connectedTo.push(g1.id);
+                        }
+                        else if (o === 'bevel_left' && dx > 5 && Math.abs(dy) < 10) {
+                             g1.connectedTo.push(g2.id); g2.connectedTo.push(g1.id);
+                        }
+                        else if (o === 'bevel_right' && dx < -5 && Math.abs(dy) < 10) {
+                             g1.connectedTo.push(g2.id); g2.connectedTo.push(g1.id);
+                        }
+                   }
+                   continue;
+              }
+              
+              // CASE 3: Bevel to Bevel (Corner)
+              if (!isFlat1 && !isFlat2 && isBevel1 && isBevel2) {
+                   // Bevel-Bevel corners must be perpendicular:
+                   // One must be Horizontal-ish (Up/Down), one Vertical-ish (Left/Right)
+                   const o1 = g1.orientation;
+                   const o2 = g2.orientation;
+                   const isHorz1 = o1 === 'bevel_up' || o1 === 'bevel_down';
+                   const isHorz2 = o2 === 'bevel_up' || o2 === 'bevel_down';
+
+                   if (isHorz1 !== isHorz2) {
+                       // Ideal geometric distance is hypotenuse
+                       const ideal = Math.sqrt(def1.radius*def1.radius + def2.radius*def2.radius);
+                       if (Math.abs(dist - ideal) < 15) {
+                           g1.connectedTo.push(g2.id);
+                           g2.connectedTo.push(g1.id);
+                       }
+                   }
+              }
+              
+              // CASE 4: Axle Connection (Tips connect to Bevels)
+              if (def1.isAxle && isBevel2) {
+                  const len = (g1.length || 3) * HOLE_SPACING;
+                  const isHorz = g1.rotation === 0;
+                  
+                  // Calculate tip positions based on orientation
+                  let tip1x, tip1y, tip2x, tip2y;
+                  if (isHorz) {
+                      tip1x = g1.x - len/2; tip1y = g1.y;
+                      tip2x = g1.x + len/2; tip2y = g1.y;
+                  } else {
+                      tip1x = g1.x; tip1y = g1.y - len/2;
+                      tip2x = g1.x; tip2y = g1.y + len/2;
+                  }
+                  
+                  const d1 = Math.hypot(tip1x - g2.x, tip1y - g2.y);
+                  const d2 = Math.hypot(tip2x - g2.x, tip2y - g2.y);
+                  
+                  // Check if tips are close to the CENTER of the bevel gear
+                  if (d1 < 20 || d2 < 20) { 
+                       g1.connectedTo.push(g2.id);
+                       g2.connectedTo.push(g1.id);
+                  }
+              }
+              else if (def2.isAxle && isBevel1) {
+                  const len = (g2.length || 3) * HOLE_SPACING;
+                  const isHorz = g2.rotation === 0;
+                  let tip1x, tip1y, tip2x, tip2y;
+                  if (isHorz) {
+                      tip1x = g2.x - len/2; tip1y = g2.y;
+                      tip2x = g2.x + len/2; tip2y = g2.y;
+                  } else {
+                      tip1x = g2.x; tip1y = g2.y - len/2;
+                      tip2x = g2.x; tip2y = g2.y + len/2;
+                  }
+
+                  const d1 = Math.hypot(tip1x - g1.x, tip1y - g1.y);
+                  const d2 = Math.hypot(tip2x - g1.x, tip2y - g1.y);
+                  
+                  if (d1 < 20 || d2 < 20) { 
+                       g1.connectedTo.push(g2.id);
+                       g2.connectedTo.push(g1.id);
+                  }
+              }
+          }
+      }
+      return gearsWithCleared;
+  }, []);
+
+  const updatePhysics = useCallback((currentGears: GearState[], currentBelts: Belt[]) => {
+      const connected = recalculateConnections(currentGears);
+      const calculated = propagatePhysics(connected, currentBelts);
+      setGears(calculated);
+      setBelts(currentBelts);
+  }, [recalculateConnections]);
+
+  const snapGear = useCallback((gear: GearState, others: GearState[], bricks: BrickState[]) => {
+      const def = GEAR_DEFS[gear.type];
+      let bestX = gear.x;
+      let bestY = gear.y;
+      let bestRotation = gear.rotation;
+      let snapped = false;
+
+      // 0. MOUNTING / STACKING
+      // A: Snap to Center of other gears (Standard Stacking)
+      for (const other of others) {
+          if (other.axleId === gear.axleId) continue;
+          if (Math.abs(gear.x - other.x) < 15 && Math.abs(gear.y - other.y) < 15) {
+              bestX = other.x;
+              bestY = other.y;
+              snapped = true;
+              break; 
+          }
+      }
+
+      // B: Snap to ANYWHERE along an Axle's length
+      if (!snapped) {
+          if (def.isAxle) {
+              // If I am an axle, do I overlap a gear?
+              for(const other of others) {
+                 if(other.axleId === gear.axleId) continue;
+                 const otherDef = GEAR_DEFS[other.type];
+                 if(!otherDef.isAxle) {
+                     // Check if the gear would be on this axle
+                     if (isOverlappingAxle(other.x, other.y, gear, 20)) {
+                         if (Math.abs(gear.x - other.x) < 20 && Math.abs(gear.y - other.y) < 20) {
+                             bestX = other.x;
+                             bestY = other.y;
+                             snapped = true;
+                             break;
+                         }
+                     }
+                 }
+              }
+          } else {
+              // I am a gear, am I over an axle?
+              for(const other of others) {
+                  if (other.axleId === gear.axleId) continue;
+                  const otherDef = GEAR_DEFS[other.type];
+                  if (otherDef.isAxle) {
+                      // Project gear position onto axle
+                      if (isOverlappingAxle(gear.x, gear.y, other, 30)) {
+                          const point = getClosestPointOnAxle(gear.x, gear.y, other);
+                          bestX = point.x;
+                          bestY = point.y;
+                          snapped = true;
+                          break;
+                      }
+                  }
+              }
+          }
+      }
+
+      // 0.5 Snap Axle Tips to Gear Centers (End-to-End / Tip Connection)
+      if (!snapped) {
+        if (def.isAxle) {
+            const len = (gear.length || 3) * HOLE_SPACING;
+            const isHorz = gear.rotation === 0;
+            const tips = isHorz 
+                ? [{x: gear.x - len/2, y: gear.y}, {x: gear.x + len/2, y: gear.y}]
+                : [{x: gear.x, y: gear.y - len/2}, {x: gear.x, y: gear.y + len/2}];
+            
+            for(const tip of tips) {
+                for(const other of others) {
+                    if (other.axleId === gear.axleId) continue;
+                    if (Math.hypot(tip.x - other.x, tip.y - other.y) < 20) { // Tolerant snap
+                        const offsetX = tip.x - gear.x;
+                        const offsetY = tip.y - gear.y;
+                        bestX = other.x - offsetX;
+                        bestY = other.y - offsetY;
+                        snapped = true;
+                        break;
+                    }
+                }
+                if (snapped) break;
+            }
+        }
+        else {
+             for(const other of others) {
+                 const otherDef = GEAR_DEFS[other.type];
+                 if (otherDef.isAxle) {
+                     const len = (other.length || 3) * HOLE_SPACING;
+                     const isHorz = other.rotation === 0;
+                     const tips = isHorz 
+                        ? [{x: other.x - len/2, y: other.y}, {x: other.x + len/2, y: other.y}]
+                        : [{x: other.x, y: other.y - len/2}, {x: other.x, y: other.y + len/2}];
+                     
+                     for(const tip of tips) {
+                         if (Math.hypot(gear.x - tip.x, gear.y - tip.y) < 20) { // Tolerant snap
+                             bestX = tip.x;
+                             bestY = tip.y;
+                             snapped = true;
+                             break;
+                         }
+                     }
+                 }
+                 if (snapped) break;
+             }
+        }
+      }
+
+      // 1. Snap to mesh with other gears (Side-by-Side)
+      if (!snapped && !def.isAxle) {
+          const isBevel = def.isBevel;
+          const isVertical = gear.orientation && gear.orientation !== 'flat';
+
+          let minDiff = 15; 
+          for (const other of others) {
+              const otherDef = GEAR_DEFS[other.type];
+              if (other.axleId === gear.axleId) continue;
+              if (otherDef.isAxle) continue; // Already handled mounting
+
+              // Smart Axis Alignment
+              if (Math.abs(gear.x - other.x) < 5) bestX = other.x;
+              if (Math.abs(gear.y - other.y) < 5) bestY = other.y;
+
+              const currentDist = getDistance(gear.x, gear.y, other.x, other.y);
+              
+              let idealDist = def.radius + otherDef.radius;
+              const MESH_PADDING = -1; 
+
+              if (isBevel && isVertical && (!other.orientation || other.orientation === 'flat')) {
+                  idealDist = otherDef.radius + 9; 
+              } 
+              
+              if (Math.abs(currentDist - idealDist) < minDiff) {
+                  const angle = Math.atan2(gear.y - other.y, gear.x - other.x);
+                  
+                  const deg = angle * (180/Math.PI);
+                  let snapAngle = angle;
+                  if (Math.abs(deg - 0) < 10) snapAngle = 0;
+                  if (Math.abs(deg - 90) < 10) snapAngle = Math.PI/2;
+                  if (Math.abs(deg - 180) < 10) snapAngle = Math.PI;
+                  if (Math.abs(deg + 180) < 10) snapAngle = Math.PI;
+                  if (Math.abs(deg + 90) < 10) snapAngle = -Math.PI/2;
+
+                  bestX = other.x + Math.cos(snapAngle) * (idealDist + MESH_PADDING);
+                  bestY = other.y + Math.sin(snapAngle) * (idealDist + MESH_PADDING);
+                  snapped = true;
+                  break;
+              }
+          }
+      }
+
+      // 2. Snap to Bricks (Holes)
+      if (!snapped) {
+          let minDist = 15;
+          for (const b of bricks) {
+               const isBeam = b.brickType === 'beam';
+               const holeCount = isBeam ? b.length : Math.max(1, b.length - 1);
+               const rad = (b.rotation * Math.PI) / 180;
+               const cos = Math.cos(rad);
+               const sin = Math.sin(rad);
+               
+               for (let i=0; i<holeCount; i++) {
+                   const hx = b.x + (i * HOLE_SPACING) * cos;
+                   const hy = b.y + (i * HOLE_SPACING) * sin;
+                   
+                   const d = getDistance(gear.x, gear.y, hx, hy);
+                   if (d < minDist) {
+                       bestX = hx;
+                       bestY = hy;
+                       snapped = true;
+                       minDist = d;
+                   }
+               }
+          }
+      }
+      
+      // 3. Grid Snap
+      if (!snapped) {
+          bestX = Math.round(gear.x / 20) * 20;
+          bestY = Math.round(gear.y / 20) * 20;
+      }
+
+      return { ...gear, x: bestX, y: bestY, rotation: bestRotation };
+  }, []);
+
+  const snapBrick = useCallback((brick: BrickState, others: BrickState[]) => {
+      return {
+          ...brick,
+          x: Math.round(brick.x / 20) * 20,
+          y: Math.round(brick.y / 20) * 20
+      };
+  }, []);
+
+
+  // --- Action Handlers ---
+
+  const deleteGear = useCallback((id: string) => {
+      pushHistory(gears, belts, bricks);
+      const gear = gears.find(g => g.id === id);
+      if (gear?.fixed) return;
+      
+      const newGears = gears.filter(g => g.id !== id);
+      const newBelts = belts.filter(b => b.sourceId !== id && b.targetId !== id);
+      updatePhysics(newGears, newBelts);
+      setSelectedId(null);
+      audioManager.playSnap();
+  }, [gears, belts, bricks, pushHistory, updatePhysics]);
+
+  const deleteBrick = useCallback((id: string) => {
+      pushHistory(gears, belts, bricks);
+      const brick = bricks.find(b => b.id === id);
+      if (brick?.fixed) return;
+
+      setBricks(prev => prev.filter(b => b.id !== id));
+      setSelectedBrickId(null);
+      audioManager.playSnap();
+  }, [gears, belts, bricks, pushHistory]);
+
+  const updateGear = useCallback((id: string, updates: Partial<GearState>) => {
+      pushHistory(gears, belts, bricks);
+      const updatedGears = gears.map(g => g.id === id ? { ...g, ...updates } : g);
+      updatePhysics(updatedGears, belts);
+  }, [gears, belts, bricks, pushHistory, updatePhysics]);
+
+  const addGearOnSameAxle = useCallback((sourceGearId: string, type: GearType) => {
+      const source = gears.find(g => g.id === sourceGearId);
+      if (!source) return;
+
+      const newGear: GearState = {
+          id: uuidv4(),
+          axleId: source.axleId,
+          type,
+          x: source.x,
+          y: source.y,
+          rotation: source.rotation,
+          connectedTo: [],
+          isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+          ratio: source.ratio, rpm: source.rpm, torque: source.torque, direction: source.direction, speed: source.speed, isJammed: false, isStalled: false
+      };
+      
+      pushHistory(gears, belts, bricks);
+      updatePhysics([...gears, newGear], belts);
+      audioManager.playSnap();
+  }, [gears, belts, bricks, pushHistory, updatePhysics]);
+
+  const rotateBrick = useCallback((e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      const brick = bricks.find(b => b.id === id);
+      if (!brick || brick.fixed) return;
+      
+      pushHistory(gears, belts, bricks);
+      setBricks(prev => prev.map(b => {
+          if (b.id === id) return { ...b, rotation: (b.rotation + 90) % 360 };
+          return b;
+      }));
+      audioManager.playSnap();
+  }, [gears, belts, bricks, pushHistory]);
+
+  const getGearRole = useCallback((gear: GearState): 'drive' | 'driven' | 'idler' | null => {
+      if (!showRoles) return null;
+      if (gear.isMotor) return 'drive';
+      if (gear.rpm === 0) return null;
+      if (gear.load > 0) return 'driven';
+      return 'idler';
+  }, [showRoles]);
+
+  const resetPlayground = useCallback(() => {
+      if (window.confirm(t.reset + '?')) {
+          pushHistory(gears, belts, bricks);
+          setGears([]);
+          setBelts([]);
+          setBricks([]);
+          setActiveChallengeId(null);
+      }
+  }, [gears, belts, bricks, pushHistory, t.reset]);
+
+  const generateRandomLayout = useCallback(() => {
+      pushHistory(gears, belts, bricks);
+      const newGears: GearState[] = [];
+      const newBricks: BrickState[] = [];
+      
+      const cx = 500; 
+      const cy = 300;
+      
+      const b1: BrickState = { id: uuidv4(), length: 13, brickType: 'beam', x: cx - 200, y: cy, rotation: 0 };
+      newBricks.push(b1);
+
+      const g1: GearState = {
+        id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
+        isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+        ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false
+      };
+      newGears.push(g1);
+      
+      let lastGear = g1;
+      for(let i=0; i<3; i++) {
+          const type = i % 2 === 0 ? GearType.Small : GearType.Large;
+          const defLast = GEAR_DEFS[lastGear.type];
+          const defNew = GEAR_DEFS[type];
+          const dist = defLast.radius + defNew.radius;
+          const newGear: GearState = {
+            id: uuidv4(), axleId: uuidv4(), type: type, x: lastGear.x + dist, y: lastGear.y, rotation: 0, connectedTo: [],
+            isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+          };
+          newGears.push(newGear);
+          lastGear = newGear;
+      }
+
+      setGears(newGears);
+      setBelts([]);
+      setBricks(newBricks);
+      setActiveChallengeId(null);
+      
+      setTimeout(() => updatePhysics(newGears, []), 10);
+  }, [gears, belts, bricks, pushHistory, updatePhysics]);
+
+  const onSelectChallenge = useCallback((id: number | null) => {
+      if (id === null) {
+          setActiveChallengeId(null);
+          return;
+      }
+      const challenge = CHALLENGES.find(c => c.id === id);
+      if (challenge) {
+          if (challenge.preset) {
+              const p = challenge.preset();
+              pushHistory(gears, belts, bricks);
+              setGears(p.gears);
+              setBricks(p.bricks);
+              setBelts(p.belts);
+              updatePhysics(p.gears, p.belts);
+          }
+          setActiveChallengeId(id);
+          setIsSidebarOpen(false);
+      }
+  }, [gears, belts, bricks, pushHistory, updatePhysics]);
+
+  const handleStartLesson = useCallback((lesson: Lesson) => {
+      if (lesson.preset) {
+          const p = lesson.preset();
+          pushHistory(gears, belts, bricks);
+          setGears(p.gears);
+          setBricks(p.bricks);
+          setBelts(p.belts);
+          updatePhysics(p.gears, p.belts);
+      }
+      setActiveChallengeId(null);
+      setCurrentTutorialSteps(lesson.steps);
+      setIsTutorialOpen(true);
+      setIsSidebarOpen(false);
+  }, [gears, belts, bricks, pushHistory, updatePhysics]);
+
+  const handleNextLevel = useCallback(() => {
+      if (activeChallengeId) {
+          const idx = CHALLENGES.findIndex(c => c.id === activeChallengeId);
+          if (idx >= 0 && idx < CHALLENGES.length - 1) {
+              onSelectChallenge(CHALLENGES[idx + 1].id);
+          } else {
+              setActiveChallengeId(null);
+          }
+      }
+  }, [activeChallengeId, onSelectChallenge]);
+
+  const handleTutorialClose = useCallback(() => {
+      setIsTutorialOpen(false);
+  }, []);
+
+  const handleGlobalRpmChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = parseInt(e.target.value);
+      setGlobalRpm(val);
+      setGears(prev => {
+         const updated = prev.map(g => {
+             if (g.isMotor) return { ...g, motorRpm: val };
+             return g;
+         });
+         return propagatePhysics(recalculateConnections(updated), belts);
+      });
+  }, [belts, recalculateConnections]);
+
 
   // Default App Tour Steps
   const defaultTutorialSteps: TutorialStep[] = [
       { title: t.tutorial.welcome, description: t.tutorial.welcomeDesc, position: 'center' },
       { targetId: 'sidebar-container', title: t.tutorial.sidebar, description: t.tutorial.sidebarDesc, position: 'right' },
+      { targetId: 'tab-structure', title: t.tutorial.structure, description: t.tutorial.structureDesc, position: 'right' },
       { targetId: 'workspace-area', title: t.tutorial.workspace, description: t.tutorial.workspaceDesc, position: 'center' },
       { targetId: 'toolbar-controls', title: t.tutorial.toolbar, description: t.tutorial.toolbarDesc, position: 'bottom' },
       { targetId: 'btn-example', title: t.tutorial.example, description: t.tutorial.exampleDesc, position: 'right' },
+      { targetId: 'prop-panel', title: t.tutorial.properties, description: t.tutorial.propertiesDesc, position: 'left' },
       { targetId: 'tab-missions', title: t.tutorial.missions, description: t.tutorial.missionsDesc, position: 'right' },
       { targetId: 'tab-lessons', title: t.tutorial.lessons, description: t.tutorial.lessonsDesc, position: 'right' },
       { title: t.tutorial.done, description: t.tutorial.doneDesc, position: 'center' },
   ];
+
+  const handleTutorialStepChange = (index: number) => {
+      if (index === 1) {
+          setIsSidebarOpen(true);
+          setSidebarTab('parts');
+      }
+      else if (index === 2) {
+          setIsSidebarOpen(true);
+          setSidebarTab('structure');
+      }
+      else if (index === 5) {
+          generateRandomLayout();
+      }
+      else if (index === 6) {
+          setIsPropertiesOpen(true);
+          if (gears.length > 0) {
+              setSelectedId(gears[0].id);
+          }
+      } 
+      else if (index === 7) {
+          if (isPropertiesOpen) setIsPropertiesOpen(false); 
+          setIsSidebarOpen(true);
+          setSidebarTab('missions');
+      }
+      else if (index === 8) {
+          setIsSidebarOpen(true);
+          setSidebarTab('lessons');
+      }
+      else {
+          if (isPropertiesOpen && index !== 6) {
+              setIsPropertiesOpen(false);
+          }
+      }
+  };
 
   // --- Persistence Effects ---
   useEffect(() => {
@@ -184,39 +859,34 @@ const App: React.FC = () => {
       }
   }, [challengeSuccess]);
 
-  // --- History Management ---
-  const pushHistory = useCallback((currentGears: GearState[], currentBelts: Belt[], currentBricks: BrickState[]) => {
-    setHistory(prev => [...prev, { gears: currentGears, belts: currentBelts, bricks: currentBricks }]);
-    setFuture([]); 
-  }, []);
-
-  const performUndo = useCallback(() => {
-    setHistory(prevHistory => {
-        if (prevHistory.length === 0) return prevHistory;
-        const previousState = prevHistory[prevHistory.length - 1];
-        const newHistory = prevHistory.slice(0, -1);
-        
-        setFuture(prevFuture => [{ gears, belts, bricks }, ...prevFuture]);
-        setGears(previousState.gears);
-        setBelts(previousState.belts);
-        setBricks(previousState.bricks);
-        return newHistory;
-    });
-  }, [gears, belts, bricks]);
-
-  const performRedo = useCallback(() => {
-    setFuture(prevFuture => {
-        if (prevFuture.length === 0) return prevFuture;
-        const nextState = prevFuture[0];
-        const newFuture = prevFuture.slice(1);
-
-        setHistory(prevHistory => [...prevHistory, { gears, belts, bricks }]);
-        setGears(nextState.gears);
-        setBelts(nextState.belts);
-        setBricks(nextState.bricks);
-        return newFuture;
-    });
-  }, [gears, belts, bricks]);
+  const cycleGearOrientation = (id: string) => {
+      const gear = gears.find(g => g.id === id);
+      if (!gear || gear.fixed) return;
+      
+      const def = GEAR_DEFS[gear.type];
+      
+      pushHistory(gears, belts, bricks);
+      setGears(prev => prev.map(g => {
+          if (g.id === id) {
+             if (def.isAxle) {
+                 // Axle: 0 -> 90 -> 0 (Orientation only)
+                 return { ...g, rotation: g.rotation === 0 ? 90 : 0 };
+             } else if (def.isBevel) {
+                 let newOrientation: GearOrientation = 'flat';
+                 const current = g.orientation || 'flat';
+                 // Cycle: Flat -> Up -> Right -> Down -> Left -> Flat
+                 if (current === 'flat') newOrientation = 'bevel_up';
+                 else if (current === 'bevel_up') newOrientation = 'bevel_right';
+                 else if (current === 'bevel_right') newOrientation = 'bevel_down';
+                 else if (current === 'bevel_down') newOrientation = 'bevel_left';
+                 else newOrientation = 'flat';
+                 return { ...g, orientation: newOrientation };
+             }
+          }
+          return g;
+      }));
+      audioManager.playSnap();
+  };
 
   // --- Keyboard Shortcuts ---
   useEffect(() => {
@@ -243,11 +913,21 @@ const App: React.FC = () => {
             if (selectedId) deleteGear(selectedId);
             if (selectedBrickId) deleteBrick(selectedBrickId);
         }
+        if (e.key.toLowerCase() === 'm' && selectedId) {
+             const g = gears.find(g => g.id === selectedId);
+             if (g && !g.fixed && !GEAR_DEFS[g.type].isAxle) {
+                 updateGear(selectedId, { isMotor: !g.isMotor });
+                 audioManager.playSnap();
+             }
+        }
+        if (e.key.toLowerCase() === 'r' && selectedId) {
+            cycleGearOrientation(selectedId);
+        }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [performUndo, performRedo, selectedId, selectedBrickId]);
+  }, [performUndo, performRedo, selectedId, selectedBrickId, gears, deleteGear, deleteBrick, updateGear]);
 
 
   // Challenge Check Loop
@@ -289,10 +969,20 @@ const App: React.FC = () => {
           if (gear.rpm !== 0 && !gear.isJammed && !gear.isStalled) {
             changed = true;
             const rotationStep = gear.rpm * 0.1 * dt;
-            return {
-              ...gear,
-              rotation: (gear.rotation + (rotationStep * gear.direction)) % 360
-            };
+            
+            // Special handling for Axles: 
+            // 'rotation' is used for Orientation (0 or 90), so we must NOT animate it continuously.
+            // Instead, we use 'step' for the internal texture animation.
+            if (GEAR_DEFS[gear.type].isAxle) {
+                const currentStep = gear.step || 0;
+                // Multiply by direction to spin correct way
+                return { ...gear, step: (currentStep + (rotationStep * gear.direction)) % 360 };
+            } else {
+                return {
+                    ...gear,
+                    rotation: (gear.rotation + (rotationStep * gear.direction)) % 360
+                };
+            }
           }
           return gear;
         });
@@ -342,7 +1032,6 @@ const App: React.FC = () => {
 
         if (!collision) {
              for (const b of bricks) {
-                // Check against all bricks for generic overlap
                 const rad = (b.rotation * Math.PI) / 180;
                 const cos = Math.cos(rad);
                 const sin = Math.sin(rad);
@@ -380,7 +1069,6 @@ const App: React.FC = () => {
   // Check collision with obstacles
   const checkCollision = (gear: Partial<GearState> & {type: GearType, x: number, y: number}, x: number, y: number, bricks: BrickState[]): boolean => {
     const gearRadius = GEAR_DEFS[gear.type].radius;
-    // Add a buffer to gear radius to prevent clipping
     const collisionRadius = gearRadius + 15; 
 
     for (const b of bricks) {
@@ -396,7 +1084,6 @@ const App: React.FC = () => {
             const hy = b.y + i * 40 * sin;
             const dist = Math.hypot(x - hx, y - hy);
             
-            // Standard brick hole radius ~17-20px
             if (dist < (collisionRadius + 17)) {
                 return true;
             }
@@ -409,51 +1096,31 @@ const App: React.FC = () => {
   const checkBeltObstruction = (g1: GearState, g2: GearState, bricks: BrickState[]): boolean => {
       for (const b of bricks) {
           if (!b.isObstacle) continue;
-          
-          // Transform belt line segment into brick's local coordinate space
-          // Translate world to brick origin, then rotate by -brick.rotation
           const angle = -b.rotation * (Math.PI / 180);
           const dx = b.x;
           const dy = b.y;
-          
           const cos = Math.cos(angle);
           const sin = Math.sin(angle);
-
-          // Local point = (p - origin) rotated
           const lx1 = (g1.x - dx) * cos - (g1.y - dy) * sin;
           const ly1 = (g1.x - dx) * sin + (g1.y - dy) * cos;
           const lx2 = (g2.x - dx) * cos - (g2.y - dy) * sin;
           const ly2 = (g2.x - dx) * sin + (g2.y - dy) * cos;
-
-          // Brick Local AABB
-          const brickHeightHalf = 17; // 34/2
+          const brickHeightHalf = 17; 
           const minY = -brickHeightHalf;
           const maxY = brickHeightHalf;
-          
           let minX, maxX;
-          // Local origin for beam/brick is at first hole (or offset slightly)
-          // Beam: Visuals are from -17 to (L-1)*40 + 17
-          // Brick: Visuals are from -40 to (L-1)*40
           if (b.brickType === 'beam') {
              minX = -17;
              maxX = (b.length - 1) * 40 + 17;
           } else {
-             // Rectangle starts at -40 relative to first hole center
              minX = -40;
-             // Rectangle width is L*40. So end is -40 + L*40
              maxX = (b.length * 40) - 40;
           }
-          
-          // Expand bounds slightly to be safe against clipping
           const safePadding = 5; 
-          
-          if (lineIntersectsLine(lx1, ly1, lx2, ly2, minX-safePadding, minY-safePadding, maxX+safePadding, minY-safePadding)) return true; // Top
-          if (lineIntersectsLine(lx1, ly1, lx2, ly2, minX-safePadding, maxY+safePadding, maxX+safePadding, maxY+safePadding)) return true; // Bottom
-          if (lineIntersectsLine(lx1, ly1, lx2, ly2, minX-safePadding, minY-safePadding, minX-safePadding, maxY+safePadding)) return true; // Left
-          if (lineIntersectsLine(lx1, ly1, lx2, ly2, maxX+safePadding, minY-safePadding, maxX+safePadding, maxY+safePadding)) return true; // Right
-          
-          // Also check if belt points are inside (unlikely for line, but possible if gear is inside)
-          // We assume gear collision handles 'inside', we just check 'crossing'.
+          if (lineIntersectsLine(lx1, ly1, lx2, ly2, minX-safePadding, minY-safePadding, maxX+safePadding, minY-safePadding)) return true; 
+          if (lineIntersectsLine(lx1, ly1, lx2, ly2, minX-safePadding, maxY+safePadding, maxX+safePadding, maxY+safePadding)) return true; 
+          if (lineIntersectsLine(lx1, ly1, lx2, ly2, minX-safePadding, minY-safePadding, minX-safePadding, maxY+safePadding)) return true; 
+          if (lineIntersectsLine(lx1, ly1, lx2, ly2, maxX+safePadding, minY-safePadding, maxX+safePadding, maxY+safePadding)) return true; 
       }
       return false;
   };
@@ -489,41 +1156,41 @@ const App: React.FC = () => {
   const handleGearTouchStart = (e: React.TouchEvent, id: string) => {
     if (e.touches.length !== 1) return;
     e.stopPropagation(); 
-
-    // Don't select immediately
-    interactionTargetIdRef.current = id;
-    interactionTargetTypeRef.current = 'gear';
-
+    
     const gear = gears.find(g => g.id === id);
     if (gear) {
-        if (gear.fixed) return; // Fixed gears cannot be dragged
-        
+        if (gear.fixed) return; 
         undoRef.current = { gears, belts, bricks };
         hasMovedRef.current = false;
+        
         setDraggingAxleId(gear.axleId);
         
+        // Snapshot Group
+        const group = gears.filter(g => g.axleId === gear.axleId);
+        const map = new Map<string, {x: number, y: number}>();
+        group.forEach(g => map.set(g.id, { x: g.x, y: g.y }));
+        dragStateRef.current = map;
+
         const touch = e.touches[0];
         const worldPos = screenToWorld(touch.clientX, touch.clientY);
         setDragOffset({ x: worldPos.x - gear.x, y: worldPos.y - gear.y });
+        
+        interactionTargetIdRef.current = id;
+        interactionTargetTypeRef.current = 'gear';
     }
   };
 
   const handleBrickTouchStart = (e: React.TouchEvent, id: string) => {
     if (e.touches.length !== 1) return;
     e.stopPropagation();
-
-    // Don't select immediately
     interactionTargetIdRef.current = id;
     interactionTargetTypeRef.current = 'brick';
-
     const brick = bricks.find(b => b.id === id);
     if (brick) {
-        if (brick.fixed) return; // Fixed bricks cannot be dragged
-        
+        if (brick.fixed) return; 
         undoRef.current = { gears, belts, bricks };
         hasMovedRef.current = false;
         setDraggingBrickId(id);
-
         const touch = e.touches[0];
         const worldPos = screenToWorld(touch.clientX, touch.clientY);
         setDragOffset({ x: worldPos.x - brick.x, y: worldPos.y - brick.y });
@@ -543,7 +1210,6 @@ const App: React.FC = () => {
          setDraggingAxleId(null);
          setDraggingBrickId(null);
          setIsPanning(false);
-         
          const t1 = e.touches[0];
          const t2 = e.touches[1];
          const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -557,21 +1223,43 @@ const App: React.FC = () => {
     if (e.touches.length === 1) {
         const touch = e.touches[0];
         const worldPos = screenToWorld(touch.clientX, touch.clientY);
-
-        if (draggingAxleId) {
+        
+        if (draggingAxleId && interactionTargetIdRef.current) {
             hasMovedRef.current = true;
-            const x = worldPos.x - dragOffset.x;
-            const y = worldPos.y - dragOffset.y;
+            const clickedId = interactionTargetIdRef.current;
+            const startPos = dragStateRef.current.get(clickedId);
             
-            setGears(prev => prev.map(g => {
-              if (g.axleId === draggingAxleId) return { ...g, x, y };
-              return g;
-            }));
+            if (startPos) {
+                const targetX = worldPos.x - dragOffset.x;
+                const targetY = worldPos.y - dragOffset.y;
+                const deltaX = targetX - startPos.x;
+                const deltaY = targetY - startPos.y;
+                
+                // Ghost Snap for Touch
+                const refGearOriginal = gears.find(g => g.id === clickedId);
+                 if (refGearOriginal) {
+                     const dummyGear = { ...refGearOriginal, x: targetX, y: targetY };
+                     const others = gears.filter(g => g.axleId !== draggingAxleId);
+                     const snapped = snapGear(dummyGear, others, bricks);
+                     if (Math.abs(snapped.x - targetX) > 0.1 || Math.abs(snapped.y - targetY) > 0.1) {
+                        setSnapPreview({ x: snapped.x, y: snapped.y, rotation: snapped.rotation });
+                     } else {
+                        setSnapPreview(null);
+                     }
+                }
+
+                setGears(prev => prev.map(g => {
+                  if (g.axleId === draggingAxleId) {
+                      const initial = dragStateRef.current.get(g.id);
+                      if (initial) return { ...g, x: initial.x + deltaX, y: initial.y + deltaY };
+                  }
+                  return g;
+                }));
+            }
         } else if (draggingBrickId) {
             hasMovedRef.current = true;
             const x = worldPos.x - dragOffset.x;
             const y = worldPos.y - dragOffset.y;
-
             setBricks(prev => prev.map(b => {
                 if (b.id === draggingBrickId) return { ...b, x, y };
                 return b;
@@ -583,15 +1271,12 @@ const App: React.FC = () => {
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-        
         const currentScale = view.scale;
         const newScale = Math.min(4, Math.max(0.2, currentScale * (dist / lastPinchRef.current.dist)));
         const scaleRatio = newScale / currentScale;
-        
         const zoomCenter = lastPinchRef.current.center;
         const newX = zoomCenter.x - (zoomCenter.x - view.x) * scaleRatio;
         const newY = zoomCenter.y - (zoomCenter.y - view.y) * scaleRatio;
-
         setView({ x: newX, y: newY, scale: newScale });
         lastPinchRef.current = { dist, center: zoomCenter };
     }
@@ -620,16 +1305,16 @@ const App: React.FC = () => {
         if (data.category === 'gear') {
             let startX = worldPos.x;
             let startY = worldPos.y;
-            // Check for obstacle collision on drop
-            const dummyGear = { type: data.type as GearType, x: startX, y: startY };
+            let length = data.length;
+
+            const dummyGear = { type: data.type as GearType, x: startX, y: startY } as GearState;
             if (checkCollision(dummyGear, startX, startY, bricks)) {
-                // Find nearest free spot
                 const def = GEAR_DEFS[data.type as GearType];
                 const freePos = findFreeSpot(startX, startY, def.radius);
                 startX = freePos.x;
                 startY = freePos.y;
             }
-            addNewGear(data.type as GearType, startX, startY);
+            addNewGear(data.type as GearType, startX, startY, undefined, length);
         } else if (data.category === 'brick') {
             let brickLength = 4;
             let brickType: 'beam' | 'brick' = 'beam';
@@ -652,14 +1337,13 @@ const App: React.FC = () => {
     e.dataTransfer.dropEffect = 'copy';
   };
 
-  const handleAddGearFromSidebar = (type: GearType) => {
+  const handleAddGearFromSidebar = (type: GearType, length?: number) => {
       if (workspaceRef.current) {
           const rect = workspaceRef.current.getBoundingClientRect();
           const center = screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
           const def = GEAR_DEFS[type];
           const pos = findFreeSpot(center.x, center.y, def.radius);
-          addNewGear(type, pos.x, pos.y);
-          // Auto collapse on mobile
+          addNewGear(type, pos.x, pos.y, undefined, length);
           if (window.innerWidth < 768) {
               setIsSidebarOpen(false);
           }
@@ -672,21 +1356,21 @@ const App: React.FC = () => {
           const center = screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
           const pos = findFreeSpot(center.x, center.y, 40);
           addNewBrick(length, type, pos.x, pos.y);
-          // Auto collapse on mobile
           if (window.innerWidth < 768) {
               setIsSidebarOpen(false);
           }
       }
   };
 
-  const addNewGear = (type: GearType, x: number, y: number, existingAxleId?: string) => {
+  const addNewGear = (type: GearType, x: number, y: number, existingAxleId?: string, length?: number) => {
     pushHistory(gears, belts, bricks); 
     const newGear: GearState = {
       id: uuidv4(),
       axleId: existingAxleId || uuidv4(), 
-      type, x, y, rotation: 0, connectedTo: [],
+      type, x, y, rotation: 0, step: 0, connectedTo: [], length: length,
       isMotor: false, motorSpeed: 1, motorRpm: globalRpm, motorTorque: 100, motorDirection: 1,
-      load: 0, ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+      load: 0, ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false,
+      orientation: 'flat'
     };
 
     let gearToAdd = newGear;
@@ -722,23 +1406,13 @@ const App: React.FC = () => {
 
     if (beltSourceId) {
         if (beltSourceId !== id) {
-            // Validate Belt Path against Obstacles
             const g1 = gears.find(g => g.id === beltSourceId);
             const g2 = gears.find(g => g.id === id);
-            
             if (g1 && g2) {
-                 if (checkBeltObstruction(g1, g2, bricks)) {
-                     // Belt blocked by obstacle
-                     return;
-                 }
+                 if (checkBeltObstruction(g1, g2, bricks)) return;
             }
-
             pushHistory(gears, belts, bricks);
-            const newBelt: Belt = {
-                id: uuidv4(),
-                sourceId: beltSourceId,
-                targetId: id
-            };
+            const newBelt: Belt = { id: uuidv4(), sourceId: beltSourceId, targetId: id };
             const newBelts = [...belts, newBelt];
             setBelts(newBelts);
             updatePhysics(gears, newBelts);
@@ -748,35 +1422,51 @@ const App: React.FC = () => {
         return;
     }
 
-    // DO NOT select immediately to prevent panel from opening on drag
-    interactionTargetIdRef.current = id;
-    interactionTargetTypeRef.current = 'gear';
-
     const gear = gears.find(g => g.id === id);
     if (gear) {
-        if (gear.fixed) return; // Fixed gears cannot be moved
-
+        if (gear.fixed) return;
+        
         undoRef.current = { gears, belts, bricks }; 
         hasMovedRef.current = false;
+        
+        // Detach Logic (Shift + Click)
+        if (e.shiftKey) {
+            const newAxleId = uuidv4();
+            setGears(prev => prev.map(g => g.id === id ? { ...g, axleId: newAxleId } : g));
+            setDraggingAxleId(newAxleId);
+            
+            // Only this gear is in the new group for dragging purposes immediately
+            dragStateRef.current = new Map([[id, { x: gear.x, y: gear.y }]]);
+        } else {
+            // Group Drag
+            setDraggingAxleId(gear.axleId);
+            const group = gears.filter(g => g.axleId === gear.axleId);
+            const map = new Map<string, {x: number, y: number}>();
+            group.forEach(g => map.set(g.id, { x: g.x, y: g.y }));
+            dragStateRef.current = map;
+        }
 
-        setDraggingAxleId(gear.axleId);
         const worldPos = screenToWorld(e.clientX, e.clientY);
         setDragOffset({ x: worldPos.x - gear.x, y: worldPos.y - gear.y });
+        
+        interactionTargetIdRef.current = id;
+        interactionTargetTypeRef.current = 'gear';
     }
+  };
+
+  const handleGearDoubleClick = (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      cycleGearOrientation(id);
   };
 
   const handleBrickMouseDown = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (e.button !== 0) return;
-
-    // DO NOT select immediately to prevent panel from opening on drag
     interactionTargetIdRef.current = id;
     interactionTargetTypeRef.current = 'brick';
-
     const brick = bricks.find(b => b.id === id);
     if (brick) {
-        if (brick.fixed) return; // Fixed bricks cannot be moved
-
+        if (brick.fixed) return; 
         undoRef.current = { gears, belts, bricks };
         hasMovedRef.current = false;
         setDraggingBrickId(id);
@@ -792,14 +1482,46 @@ const App: React.FC = () => {
     }
     const worldPos = screenToWorld(e.clientX, e.clientY);
 
-    if (draggingAxleId) {
+    if (draggingAxleId && interactionTargetIdRef.current) {
       hasMovedRef.current = true;
-      const x = worldPos.x - dragOffset.x;
-      const y = worldPos.y - dragOffset.y;
-      setGears(prev => prev.map(g => {
-        if (g.axleId === draggingAxleId) return { ...g, x, y };
-        return g;
-      }));
+      
+      const clickedId = interactionTargetIdRef.current;
+      const startPos = dragStateRef.current.get(clickedId);
+      
+      if (startPos) {
+          // Target position for the clicked gear
+          const targetX = worldPos.x - dragOffset.x;
+          const targetY = worldPos.y - dragOffset.y;
+          
+          const deltaX = targetX - startPos.x;
+          const deltaY = targetY - startPos.y;
+          
+          // Ghost Snap Preview (Based on clicked gear)
+          // We construct a dummy of the clicked gear at target pos
+          const refGearOriginal = gears.find(g => g.id === clickedId);
+          if (refGearOriginal) {
+             const dummyGear = { ...refGearOriginal, x: targetX, y: targetY };
+             // We need to exclude the whole moving group from 'others' to snap against static stuff
+             const others = gears.filter(g => g.axleId !== draggingAxleId);
+             const snapped = snapGear(dummyGear, others, bricks);
+             
+             if (Math.abs(snapped.x - targetX) > 0.1 || Math.abs(snapped.y - targetY) > 0.1) {
+                setSnapPreview({ x: snapped.x, y: snapped.y, rotation: snapped.rotation });
+             } else {
+                setSnapPreview(null);
+             }
+          }
+
+          setGears(prev => prev.map(g => {
+            if (g.axleId === draggingAxleId) {
+                const initial = dragStateRef.current.get(g.id);
+                if (initial) {
+                    return { ...g, x: initial.x + deltaX, y: initial.y + deltaY };
+                }
+            }
+            return g;
+          }));
+      }
     } else if (draggingBrickId) {
       hasMovedRef.current = true;
       const x = worldPos.x - dragOffset.x;
@@ -809,24 +1531,20 @@ const App: React.FC = () => {
           return b;
       }));
     }
-  }, [isPanning, panStart, draggingAxleId, draggingBrickId, dragOffset, screenToWorld]);
+  }, [isPanning, panStart, draggingAxleId, draggingBrickId, dragOffset, screenToWorld, gears, bricks, snapGear]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
-    
-    // Handle Click-to-Select Logic
+    setSnapPreview(null); // Clear ghost
+
     if (!hasMovedRef.current && interactionTargetIdRef.current) {
         if (interactionTargetTypeRef.current === 'gear') {
             setSelectedId(interactionTargetIdRef.current);
             setSelectedBrickId(null);
-            // Do NOT auto open properties panel on selection
-            // setIsPropertiesOpen(true); 
         } else if (interactionTargetTypeRef.current === 'brick') {
             setSelectedBrickId(interactionTargetIdRef.current);
             setSelectedId(null);
-            // setIsPropertiesOpen(false); 
         }
-        // If we just clicked (didn't drag), reset the interaction target immediately
         interactionTargetIdRef.current = null;
         interactionTargetTypeRef.current = null;
     }
@@ -836,17 +1554,19 @@ const App: React.FC = () => {
         const movingAxleGears = prev.filter(g => g.axleId === draggingAxleId);
         if (movingAxleGears.length === 0) return prev;
         
-        const refGear = movingAxleGears[0];
+        // Identify Reference Gear (The one the user grabbed)
+        // Fallback to first if user switched interactions weirdly (unlikely)
+        let refGear = movingAxleGears.find(g => g.id === interactionTargetIdRef.current);
+        if (!refGear) refGear = movingAxleGears[0];
+
         const others = prev.filter(g => g.axleId !== draggingAxleId);
         const snappedRef = snapGear(refGear, others, bricks);
         
-        // Calculate movement delta
         const deltaX = snappedRef.x - refGear.x;
         const deltaY = snappedRef.y - refGear.y;
         
         let collisionDetected = false;
 
-        // 1. Check Gear vs Obstacle Collision
         for (const g of movingAxleGears) {
             if (checkCollision(g, g.x + deltaX, g.y + deltaY, bricks)) {
                 collisionDetected = true;
@@ -854,17 +1574,14 @@ const App: React.FC = () => {
             }
         }
 
-        // 2. Check Connected Belt Obstruction
         if (!collisionDetected) {
              const movingIds = new Set(movingAxleGears.map(g => g.id));
              for (const belt of belts) {
                  if (movingIds.has(belt.sourceId) || movingIds.has(belt.targetId)) {
                      let g1 = prev.find(g => g.id === belt.sourceId)!;
                      let g2 = prev.find(g => g.id === belt.targetId)!;
-
                      if (movingIds.has(g1.id)) g1 = { ...g1, x: g1.x + deltaX, y: g1.y + deltaY };
                      if (movingIds.has(g2.id)) g2 = { ...g2, x: g2.x + deltaX, y: g2.y + deltaY };
-
                      if (checkBeltObstruction(g1, g2, bricks)) {
                          collisionDetected = true;
                          break;
@@ -888,20 +1605,70 @@ const App: React.FC = () => {
             audioManager.playSnap();
         }
 
-        const deltaRot = snappedRef.rotation - refGear.rotation; 
+        // Check for mounting (Merging Axles)
+        const finalX = refGear.x + deltaX;
+        const finalY = refGear.y + deltaY;
+        let newAxleId = draggingAxleId;
+        let merged = false;
+
+        // 1. Check exact center overlap (Standard Stacking)
+        const mountTarget = others.find(g => Math.abs(g.x - finalX) < 1 && Math.abs(g.y - finalY) < 1);
+        if (mountTarget) {
+            newAxleId = mountTarget.axleId;
+            merged = true;
+        }
         
+        // 2. Check mounting along axle length (Gear on Axle / Axle on Gear)
+        if (!merged) {
+            const def = GEAR_DEFS[refGear.type];
+            if (def.isAxle) {
+                // I am an axle, am I dropping onto a gear?
+                for (const other of others) {
+                    if (other.axleId === draggingAxleId) continue;
+                    const otherDef = GEAR_DEFS[other.type];
+                    if (!otherDef.isAxle) {
+                        // Check if the gear is on the line of the dragged axle
+                        const axleState = { ...refGear, x: finalX, y: finalY };
+                        if (isOverlappingAxle(other.x, other.y, axleState, 10)) {
+                             newAxleId = other.axleId;
+                             merged = true;
+                             break;
+                        }
+                    }
+                }
+            } else {
+                // I am a gear, am I dropping onto an axle?
+                for (const other of others) {
+                    if (other.axleId === draggingAxleId) continue;
+                    const otherDef = GEAR_DEFS[other.type];
+                    if (otherDef.isAxle) {
+                        if (isOverlappingAxle(finalX, finalY, other, 10)) {
+                            newAxleId = other.axleId;
+                            merged = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (merged) {
+             audioManager.playSnap();
+        }
+
+        const deltaRot = snappedRef.rotation - refGear.rotation; 
         const finalGears = prev.map(g => {
             if (g.axleId === draggingAxleId) {
                 return { 
-                  ...g, 
-                  x: g.x + deltaX, 
-                  y: g.y + deltaY,
-                  rotation: (g.rotation + deltaRot) % 360 
+                    ...g, 
+                    x: g.x + deltaX, 
+                    y: g.y + deltaY, 
+                    rotation: (g.rotation + deltaRot) % 360,
+                    axleId: newAxleId // Apply merged ID
                 };
             }
             return g;
         });
-        
         const connectedGears = recalculateConnections(finalGears);
         return propagatePhysics(connectedGears, belts);
       });
@@ -911,7 +1678,7 @@ const App: React.FC = () => {
       }
       setDraggingAxleId(null);
       hasMovedRef.current = false;
-      interactionTargetIdRef.current = null; // Clear after drag end
+      interactionTargetIdRef.current = null;
 
     } else if (draggingBrickId) {
         setBricks(prev => {
@@ -937,9 +1704,9 @@ const App: React.FC = () => {
         }
         setDraggingBrickId(null);
         hasMovedRef.current = false;
-        interactionTargetIdRef.current = null; // Clear after drag end
+        interactionTargetIdRef.current = null; 
     }
-  }, [draggingAxleId, draggingBrickId, pushHistory, belts, bricks]);
+  }, [draggingAxleId, draggingBrickId, pushHistory, belts, bricks, recalculateConnections, snapGear, snapBrick]);
 
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove);
@@ -949,518 +1716,17 @@ const App: React.FC = () => {
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [handleMouseMove, handleMouseUp]);
-
-  // --- Snapping & Alignment Logic ---
-  const snapBrick = (brick: BrickState, others: BrickState[]): {x: number, y: number} => {
-      let bestX = brick.x;
-      let bestY = brick.y;
-      let minDist = 20; 
-
-      bestX = Math.round(bestX / 20) * 20;
-      bestY = Math.round(bestY / 20) * 20;
-      const isHorizontal = Math.abs(brick.rotation % 180) < 1;
-
-      for (const other of others) {
-          const isOtherHorizontal = Math.abs(other.rotation % 180) < 1;
-          if (isHorizontal !== isOtherHorizontal) continue;
-
-          if (isHorizontal) {
-              const dy = brick.y - other.y;
-              const dx = brick.x - other.x;
-              if (Math.abs(Math.abs(dy) - BRICK_WIDTH) < 10) {
-                  const sign = Math.sign(dy) || 1;
-                  bestY = other.y + sign * BRICK_WIDTH;
-                  const remainder = dx % HOLE_SPACING;
-                  let distToHole = remainder;
-                  if (remainder > HOLE_SPACING / 2) distToHole = remainder - HOLE_SPACING;
-                  if (remainder < -HOLE_SPACING / 2) distToHole = remainder + HOLE_SPACING;
-                  if (Math.abs(distToHole) < 10) bestX = brick.x - distToHole;
-                  minDist = 0; 
-              }
-          } else {
-              const dy = brick.y - other.y;
-              const dx = brick.x - other.x;
-              if (Math.abs(Math.abs(dx) - BRICK_WIDTH) < 10) {
-                   const sign = Math.sign(dx) || 1;
-                   bestX = other.x + sign * BRICK_WIDTH;
-                   const remainder = dy % HOLE_SPACING;
-                   let distToHole = remainder;
-                   if (remainder > HOLE_SPACING / 2) distToHole = remainder - HOLE_SPACING;
-                   if (remainder < -HOLE_SPACING / 2) distToHole = remainder + HOLE_SPACING;
-                   if (Math.abs(distToHole) < 10) bestY = brick.y - distToHole;
-                   minDist = 0;
-              }
-          }
-      }
-      return { x: bestX, y: bestY };
-  };
-
-  const snapGear = (gear: GearState, otherGears: GearState[], availableBricks: BrickState[]): GearState => {
-    let bestX = gear.x;
-    let bestY = gear.y;
-    let minDiff = SNAP_THRESHOLD; 
-
-    for (const brick of availableBricks) {
-        if (brick.isObstacle) continue; // Don't snap to obstacles
-
-        const rad = (brick.rotation * Math.PI) / 180;
-        const cos = Math.round(Math.cos(rad)); 
-        const sin = Math.round(Math.sin(rad)); 
-        const isBeam = brick.brickType === 'beam';
-        const loopLimit = isBeam ? brick.length : Math.max(1, brick.length - 1);
-
-        for (let i = 0; i < loopLimit; i++) {
-            const hx = brick.x + (i * HOLE_SPACING * cos);
-            const hy = brick.y + (i * HOLE_SPACING * sin);
-            const dist = getDistance(gear.x, gear.y, hx, hy);
-            if (dist < minDiff) {
-                bestX = hx;
-                bestY = hy;
-                minDiff = dist; 
-            }
-        }
-    }
-
-    if (minDiff > 5) { 
-        otherGears.forEach(other => {
-            if (other.axleId === gear.axleId) return;
-            const r1 = GEAR_DEFS[gear.type].radius;
-            const r2 = GEAR_DEFS[other.type].radius;
-            const idealDist = r1 + r2;
-            const currentDist = getDistance(gear.x, gear.y, other.x, other.y);
-            if (Math.abs(currentDist - idealDist) < minDiff) {
-                const angle = Math.atan2(gear.y - other.y, gear.x - other.x);
-                bestX = other.x + Math.cos(angle) * idealDist;
-                bestY = other.y + Math.sin(angle) * idealDist;
-                minDiff = Math.abs(currentDist - idealDist);
-            }
-        });
-    }
-
-    let newRotation = gear.rotation;
-    const meshNeighbor = otherGears.find(other => {
-         if (other.axleId === gear.axleId) return false;
-         const r1 = GEAR_DEFS[gear.type].radius;
-         const r2 = GEAR_DEFS[other.type].radius;
-         const idealDist = r1 + r2;
-         const dist = getDistance(bestX, bestY, other.x, other.y);
-         return Math.abs(dist - idealDist) < 2.0;
-    });
-
-    if (meshNeighbor) {
-        const angleRad = Math.atan2(bestY - meshNeighbor.y, bestX - meshNeighbor.x);
-        const angleDeg = angleRad * (180 / Math.PI);
-        const N1 = GEAR_DEFS[meshNeighbor.type].teeth;
-        const N2 = GEAR_DEFS[gear.type].teeth;
-        const theta1 = meshNeighbor.rotation;
-        const ratio = N1 / N2;
-        const targetRot = (angleDeg - theta1) * ratio + angleDeg + 180 + (180/N2);
-        newRotation = targetRot;
-    }
-    return { ...gear, x: bestX, y: bestY, rotation: newRotation };
-  };
-
-  const rotateBrick = (e: React.MouseEvent, id: string) => {
-      e.stopPropagation();
-      const brick = bricks.find(b => b.id === id);
-      if (brick?.fixed) return; // Fixed bricks cannot be rotated
-      
-      pushHistory(gears, belts, bricks);
-      setBricks(prev => prev.map(b => {
-          if (b.id === id) {
-              const newRot = (b.rotation + 90) % 360;
-              return { ...b, rotation: newRot };
-          }
-          return b;
-      }));
-      audioManager.playSnap();
-  };
-
-  const recalculateConnections = (allGears: GearState[]): GearState[] => {
-    const newGears = allGears.map(g => ({ ...g, connectedTo: [] as string[] }));
-    const gearMap = new Map<string, GearState>();
-    newGears.forEach(g => gearMap.set(g.id, g));
-    const gearsByAxle = new Map<string, GearState[]>();
-    newGears.forEach(g => {
-        if(!gearsByAxle.has(g.axleId)) gearsByAxle.set(g.axleId, []);
-        gearsByAxle.get(g.axleId)!.push(g);
-    });
-    const axleDepth = new Map<string, number>();
-    const queue: string[] = [];
-    gearsByAxle.forEach((axleGears, axleId) => {
-        if (axleGears.some(g => g.isMotor)) {
-            axleDepth.set(axleId, 0);
-            queue.push(axleId);
-        }
-    });
-    let head = 0;
-    while (head < queue.length) {
-        const currentAxleId = queue[head++];
-        const currentDepth = axleDepth.get(currentAxleId)!;
-        const currentGears = gearsByAxle.get(currentAxleId)!;
-        const candidateConnections = new Map<string, { source: GearState, target: GearState }[]>();
-        newGears.forEach(potentialNeighbor => {
-            if (potentialNeighbor.axleId === currentAxleId) return;
-            const neighborAxleId = potentialNeighbor.axleId;
-            for (const myGear of currentGears) {
-                 const r1 = GEAR_DEFS[myGear.type].radius;
-                 const r2 = GEAR_DEFS[potentialNeighbor.type].radius;
-                 const idealDist = r1 + r2;
-                 const dist = getDistance(myGear.x, myGear.y, potentialNeighbor.x, potentialNeighbor.y);
-                 if (Math.abs(dist - idealDist) < 2.0) {
-                     if (!candidateConnections.has(neighborAxleId)) candidateConnections.set(neighborAxleId, []);
-                     candidateConnections.get(neighborAxleId)!.push({ source: myGear, target: potentialNeighbor });
-                 }
-            }
-        });
-        candidateConnections.forEach((candidates, neighborAxleId) => {
-             let validConnection = false;
-             let targetDepth = axleDepth.get(neighborAxleId);
-             if (targetDepth === undefined) {
-                 axleDepth.set(neighborAxleId, currentDepth + 1);
-                 queue.push(neighborAxleId);
-                 validConnection = true;
-             } else if (targetDepth === currentDepth + 1) {
-                 validConnection = true;
-             }
-             if (validConnection) {
-                 const selectedMesh = candidates[0];
-                 const { source, target } = selectedMesh;
-                 if (!source.connectedTo.includes(target.id)) {
-                     source.connectedTo.push(target.id);
-                     target.connectedTo.push(source.id);
-                 }
-             }
-        });
-    }
-    newGears.forEach(g1 => {
-        if (axleDepth.has(g1.axleId)) return;
-        const candidates = new Map<string, { source: GearState, target: GearState }>();
-        newGears.forEach(g2 => {
-            if (g1.axleId === g2.axleId) return;
-            if (axleDepth.has(g2.axleId)) return;
-            const r1 = GEAR_DEFS[g1.type].radius;
-            const r2 = GEAR_DEFS[g2.type].radius;
-            const idealDist = r1 + r2;
-            const dist = getDistance(g1.x, g1.y, g2.x, g2.y);
-             if (Math.abs(dist - idealDist) < 2.0) candidates.set(g2.axleId, { source: g1, target: g2 });
-        });
-        candidates.forEach(({ source, target }) => {
-             if (!source.connectedTo.includes(target.id)) {
-                  source.connectedTo.push(target.id);
-                  target.connectedTo.push(source.id);
-             }
-        });
-    });
-    return newGears;
-  };
-
-  const updatePhysics = (newGears: GearState[], currentBelts: Belt[]) => {
-    const connected = recalculateConnections(newGears);
-    const calculated = propagatePhysics(connected, currentBelts);
-    setGears(calculated);
-  };
-
-  const updateGear = (id: string, updates: Partial<GearState>) => {
-    pushHistory(gears, belts, bricks);
-    const updatedGears = gears.map(g => g.id === id ? { ...g, ...updates } : g);
-    updatePhysics(updatedGears, belts);
-  };
   
-  const addGearOnSameAxle = (sourceId: string, type: GearType) => {
-      pushHistory(gears, belts, bricks);
-      const sourceGear = gears.find(g => g.id === sourceId);
-      if (!sourceGear) return;
-      addNewGear(type, sourceGear.x, sourceGear.y, sourceGear.axleId);
-  };
-
-  const deleteGear = (id: string) => {
-    const gear = gears.find(g => g.id === id);
-    if (gear?.fixed) return; // Cannot delete fixed gears
-
-    pushHistory(gears, belts, bricks);
-    const remainingGears = gears.filter(g => g.id !== id);
-    const remainingBelts = belts.filter(b => b.sourceId !== id && b.targetId !== id);
-    setBelts(remainingBelts);
-    setSelectedId(null);
-    updatePhysics(remainingGears, remainingBelts);
-  };
-
-  const deleteBrick = (id: string) => {
-      const brick = bricks.find(b => b.id === id);
-      if (brick?.fixed) return; // Cannot delete fixed bricks
-
-      pushHistory(gears, belts, bricks);
-      setBricks(prev => prev.filter(b => b.id !== id));
-      setSelectedBrickId(null);
-  };
-
-  const loadChallengeState = (id: number) => {
-      const challenge = CHALLENGES.find(c => c.id === id);
-      setGears([]); setBelts([]); setBricks([]); setGlobalRpm(60);
-      
-      if (challenge && challenge.preset) {
-          const preset = challenge.preset();
-          setGears(preset.gears);
-          setBricks(preset.bricks);
-          setBelts(preset.belts);
-          
-          setTimeout(() => {
-               const connected = recalculateConnections(preset.gears);
-               const calculated = propagatePhysics(connected, preset.belts);
-               setGears(calculated);
-          }, 10);
-      }
-  };
-
-  const resetPlayground = () => {
-    pushHistory(gears, belts, bricks);
-    setIsPropertiesOpen(false);
-    if (activeChallengeId) {
-        loadChallengeState(activeChallengeId);
-        setChallengeSuccess(false);
-        setHighlightedGearIds([]);
-        setSelectedId(null);
-    } else {
-        setGears([]);
-        setBelts([]);
-        setBricks([]);
-        setSelectedId(null);
-        setSelectedBrickId(null);
-        setGlobalRpm(60);
-        setActiveChallengeId(null);
-        setHighlightedGearIds([]);
-        setChallengeSuccess(false);
-        setView({ x: 0, y: 0, scale: 1 });
-    }
-  };
-
-  const generateRandomLayout = () => {
-    pushHistory(gears, belts, bricks);
-    setActiveChallengeId(null);
-    setChallengeSuccess(false);
-    setHighlightedGearIds([]);
-
-    const generatedGears: GearState[] = [];
-    const generatedBricks: BrickState[] = [];
-    const generatedBelts: Belt[] = [];
-    const cx = 500; const cy = 350;
-
-    // Helper to check if space is free (simple version)
-    const isOverlapping = (x: number, y: number, r: number) => {
-        return generatedGears.some(g => Math.hypot(g.x - x, g.y - y) < (GEAR_DEFS[g.type].radius + r));
-    };
-
-    // 1. Place Base Beam
-    const beamLen = 15;
-    const beam1: BrickState = { 
-        id: uuidv4(), length: beamLen, brickType: 'beam', 
-        x: cx - ((beamLen - 1) * HOLE_SPACING) / 2, y: cy, rotation: 0 
-    };
-    generatedBricks.push(beam1);
-
-    // 2. Place Motor
-    const motorType = GearType.Small;
-    const startIdx = 1; 
-    const motorX = beam1.x + (startIdx * HOLE_SPACING);
-    const motorY = beam1.y;
-    
-    const motorGear: GearState = {
-        id: uuidv4(), axleId: uuidv4(), type: motorType, x: motorX, y: motorY, rotation: 0, connectedTo: [],
-        isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 200, motorDirection: 1, 
-        load: 0, ratio: 1, rpm: 60, torque: 200, direction: 1, speed: 1, isJammed: false, isStalled: false
-    };
-    generatedGears.push(motorGear);
-
-    // 3. Build Train
-    let currentGear = motorGear;
-    let currentHoleIdx = startIdx;
-
-    // Available gear types
-    const types = Object.values(GearType);
-
-    for (let i = 0; i < 4; i++) {
-        // Chance to stack (Compound) if not first
-        if (i > 0 && Math.random() > 0.6) {
-            const stackType = GearType.Small; // Usually stack down to small to drive big
-            const stackGear: GearState = {
-                id: uuidv4(), axleId: currentGear.axleId, type: stackType, 
-                x: currentGear.x, y: currentGear.y, rotation: currentGear.rotation, 
-                connectedTo: [], isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 200, motorDirection: 1,
-                load: 0, ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
-            };
-            generatedGears.push(stackGear);
-            currentGear = stackGear; // Continue from this one
-        }
-
-        const r1 = GEAR_DEFS[currentGear.type].radius;
-        
-        // Find a valid next gear
-        const validOptions = types.filter(t => {
-            const r2 = GEAR_DEFS[t].radius;
-            const dist = r1 + r2;
-            // Check if distance is multiple of 40 (HOLE_SPACING)
-            // Allow small epsilon for float math, though exact constants usually used
-            return Math.abs(dist % HOLE_SPACING) < 0.1;
-        });
-
-        if (validOptions.length === 0) break; // Dead end
-
-        const nextType = validOptions[Math.floor(Math.random() * validOptions.length)];
-        const r2 = GEAR_DEFS[nextType].radius;
-        const distHoles = Math.round((r1 + r2) / HOLE_SPACING);
-        
-        const nextHoleIdx = currentHoleIdx + distHoles;
-        
-        // Check bounds
-        if (nextHoleIdx >= beamLen) break; // Off end of beam
-
-        const nextX = beam1.x + (nextHoleIdx * HOLE_SPACING);
-        const nextY = beam1.y;
-
-        if (isOverlapping(nextX, nextY, r2 * 0.8)) break; // Collision
-
-        // Calculate alignment angle (meshing)
-        // Current is at (x1,y1), Next is at (x2,y2). Angle is 0 (horizontal).
-        const N1 = GEAR_DEFS[currentGear.type].teeth;
-        const N2 = GEAR_DEFS[nextType].teeth;
-        const angleDeg = 0;
-        const theta1 = currentGear.rotation;
-        const ratio = N1 / N2;
-        const initialRot = (angleDeg - theta1) * ratio + angleDeg + 180 + (180/N2);
-
-        const nextGear: GearState = {
-            id: uuidv4(), axleId: uuidv4(), type: nextType, 
-            x: nextX, y: nextY, rotation: initialRot, 
-            connectedTo: [], isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 200, motorDirection: 1,
-            load: 0, ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
-        };
-
-        generatedGears.push(nextGear);
-        currentGear = nextGear;
-        currentHoleIdx = nextHoleIdx;
-    }
-
-    setGears(generatedGears);
-    setBricks(generatedBricks);
-    setBelts(generatedBelts);
-    
-    // Trigger physics update
-    setTimeout(() => {
-        updatePhysics(generatedGears, generatedBelts);
-    }, 10);
-    
-    setGlobalRpm(60);
-    setView({ x: 0, y: 0, scale: 0.8 });
-  };
-
-  // ... (Rest of App.tsx handlers remain same)
-  // Ensure to include handleGlobalRpmChange, handleNextLevel, etc.
-  const handleGlobalRpmChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rpm = parseInt(e.target.value);
-    setGlobalRpm(rpm);
-    const updatedGears = gears.map(g => g.isMotor ? { ...g, motorRpm: rpm } : g);
-    updatePhysics(updatedGears, belts);
-  };
-
-  const handleNextLevel = () => {
-    if (!activeChallengeId) return;
-    const currentIndex = CHALLENGES.findIndex(c => c.id === activeChallengeId);
-    const nextChallenge = CHALLENGES[currentIndex + 1];
-    setGears([]); setBelts([]); setBricks([]); setSelectedId(null); setHighlightedGearIds([]); setChallengeSuccess(false);
-    if (nextChallenge) {
-        setActiveChallengeId(nextChallenge.id);
-        loadChallengeState(nextChallenge.id);
-    } else {
-        setActiveChallengeId(null);
-    }
-  };
-
-  const onSelectChallenge = (id: number | null) => {
-      setActiveChallengeId(id);
-      setChallengeSuccess(false);
-      if (id) loadChallengeState(id);
-  };
-
-  const handleStartLesson = (lesson: Lesson) => {
-      setActiveChallengeId(null);
-      setGears([]); setBelts([]); setBricks([]);
-      const preset = lesson.preset();
-      setGears(preset.gears);
-      setBricks(preset.bricks);
-      setBelts(preset.belts);
-      setTimeout(() => {
-           const connected = recalculateConnections(preset.gears);
-           const calculated = propagatePhysics(connected, preset.belts);
-           setGears(calculated);
-      }, 10);
-      
-      const steps: TutorialStep[] = lesson.steps.map(s => ({
-          targetId: s.targetId,
-          title: lang === 'zh-TW' ? s.titleZh : s.title,
-          description: lang === 'zh-TW' ? s.descriptionZh : s.description,
-          position: s.position
-      }));
-      setCurrentTutorialSteps(steps);
-      setIsTutorialOpen(true);
-      if (window.innerWidth < 768) setIsSidebarOpen(false);
-  };
-
-  const handleTutorialClose = () => {
-      setIsTutorialOpen(false);
-      setTimeout(() => { setCurrentTutorialSteps(defaultTutorialSteps); }, 500);
-  };
-
-  useEffect(() => {
-      if (currentTutorialSteps.length === 0) {
-          setCurrentTutorialSteps(defaultTutorialSteps);
-      }
-  }, []);
-
-  const getGearRole = (gear: GearState): 'drive' | 'driven' | 'idler' | null => {
-    if (!showRoles) return null;
-    const myAxleGears = gears.filter(g => g.axleId === gear.axleId);
-    if (myAxleGears.some(g => g.isMotor)) return 'drive';
-    if (gear.rpm === 0 || gear.isJammed) return null;
-    let externalConnections = 0;
-    myAxleGears.forEach(g => {
-        g.connectedTo.forEach(connId => {
-            const neighbor = gears.find(n => n.id === connId);
-            if (neighbor && neighbor.rpm !== 0 && !neighbor.isJammed && neighbor.axleId !== gear.axleId) externalConnections++;
-        });
-    });
-    if (externalConnections >= 2) return 'idler';
-    if (externalConnections > 0) return 'driven';
-    return null;
-  };
-
-  const sortedBricksForRender = useMemo(() => {
-      return [...bricks].sort((a, b) => b.y - a.y);
-  }, [bricks]);
-
-  const sortedGearsForRender = useMemo(() => {
-      return [...gears].sort((a, b) => {
-          const rA = GEAR_DEFS[a.type].radius;
-          const rB = GEAR_DEFS[b.type].radius;
-          return rB - rA; 
-      });
-  }, [gears]);
-
-  const selectedGear = gears.find(g => g.id === selectedId);
-  const currentChallenge = CHALLENGES.find(c => c.id === activeChallengeId);
-  const isLastChallenge = currentChallenge?.id === CHALLENGES[CHALLENGES.length - 1].id;
-
   return (
     <div className="flex h-screen w-screen overflow-hidden select-none transition-colors duration-300" style={{ backgroundColor: 'var(--bg-app)' }}>
-      
-      <TutorialOverlay 
+       <TutorialOverlay 
           steps={currentTutorialSteps} 
           isOpen={isTutorialOpen} 
           onClose={handleTutorialClose} 
           lang={lang}
+          onStepChange={handleTutorialStepChange}
       />
 
-      {/* LANGUAGE & SOUND SWITCHER - TOP RIGHT (Mobile) / BOTTOM RIGHT (Desktop) */}
       <div className="absolute z-50 flex gap-2 md:gap-3 top-4 right-4 md:top-auto md:bottom-6 md:right-6">
         <button 
             onClick={() => { setCurrentTutorialSteps(defaultTutorialSteps); setIsTutorialOpen(true); }}
@@ -1489,7 +1755,6 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Made with Love Footer */}
       <div className="absolute bottom-14 md:bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-[var(--text-secondary)] opacity-50 pointer-events-none font-mono tracking-widest uppercase z-10">
          Made with <span className="text-red-500 font-bold">love</span> by STEAM SQUAD
       </div>
@@ -1506,6 +1771,8 @@ const App: React.FC = () => {
         theme={theme}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        activeTab={sidebarTab}
+        onTabChange={setSidebarTab}
       />
       
       <div className="flex-1 flex flex-col relative">
@@ -1606,7 +1873,6 @@ const App: React.FC = () => {
           onTouchEnd={handleWorkspaceTouchEnd}
           onTouchCancel={handleWorkspaceTouchEnd}
         >
-            {/* Logo Overlay */}
             <div className="absolute inset-0 pointer-events-none z-[1]" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <img 
                     src="logo.png" 
@@ -1635,7 +1901,6 @@ const App: React.FC = () => {
                 <rect id="grid-bg" x="-50000" y="-50000" width="100000" height="100000" fill="url(#grid)" className="pointer-events-none" />
                 {gears.length === 0 && bricks.length === 0 && (<text x="50%" y="50%" textAnchor="middle" fill="var(--text-muted)" fontSize="24" fontWeight="bold" fontFamily="monospace" letterSpacing="0.2em" className="pointer-events-none opacity-20 select-none">{t.initialize}</text>)}
                 
-                {/* Render Bricks (Sorted for stacking) */}
                 {sortedBricksForRender.map(brick => (
                   <BrickComponent 
                     key={brick.id} 
@@ -1649,7 +1914,6 @@ const App: React.FC = () => {
                   />
                 ))}
 
-                {/* Render Belts */}
                 {belts.map(belt => {
                   const g1 = gears.find(g => g.id === belt.sourceId);
                   const g2 = gears.find(g => g.id === belt.targetId);
@@ -1670,8 +1934,28 @@ const App: React.FC = () => {
                     </g>
                   );
                 })}
+                
+                {/* GHOST PREVIEW (Below normal gears) */}
+                {snapPreview && draggingAxleId && (() => {
+                   const g = gears.find(g => g.id === interactionTargetIdRef.current);
+                   if(!g) return null;
+                   const previewGear = { ...g, x: snapPreview.x, y: snapPreview.y, rotation: snapPreview.rotation };
+                   return (
+                       <g style={{ opacity: 0.4, filter: 'grayscale(100%) brightness(1.5)' }}>
+                           <GearComponent 
+                             gear={previewGear} 
+                             isSelected={false} 
+                             isObjectiveTarget={false}
+                             roleHighlight={null}
+                             axleMates={[]}
+                             showSpecs={false} showRatio={false} showRpm={false} showTorque={false}
+                             lang={lang} theme={theme}
+                             onMouseDown={() => {}} onTouchStart={() => {}} onClick={() => {}}
+                           />
+                       </g>
+                   )
+                })()}
 
-                {/* Render Gears */}
                 {sortedGearsForRender.map(gear => (
                   <GearComponent 
                     key={gear.id} 
@@ -1689,17 +1973,14 @@ const App: React.FC = () => {
                     onMouseDown={handleGearMouseDown} 
                     onTouchStart={handleGearTouchStart}
                     onClick={() => {}}
+                    onDoubleClick={handleGearDoubleClick}
                   />
                 ))}
                 
-                {/* Belt Creation Line */}
                 {beltSourceId && (
                     (() => {
                         const g = gears.find(g => g.id === beltSourceId);
                         if(!g) return null;
-                        // We need mouse pos here, but in React that's hard without state. 
-                        // Visual feedback is tricky without track. 
-                        // For now, we rely on the "Belt Mode" banner.
                         return (
                             <circle cx={g.x} cy={g.y} r={GEAR_DEFS[g.type].radius + 10} fill="none" stroke="#a855f7" strokeWidth="4" strokeDasharray="10 5" className="animate-spin-slow" />
                         )
@@ -1709,7 +1990,6 @@ const App: React.FC = () => {
              </g>
            </svg>
 
-           {/* Mission Control / Success Overlay */}
             {activeChallengeId && (
                 <div className="absolute top-6 right-6 z-30">
                     <div className={`backdrop-blur-md p-6 rounded-2xl shadow-2xl border-2 transition-all duration-500 ${challengeSuccess ? 'bg-green-900/90 border-green-500 scale-110' : 'bg-[var(--bg-panel-translucent)] border-[var(--border-color)]'}`}>
@@ -1747,7 +2027,6 @@ const App: React.FC = () => {
             )}
         </div>
 
-        {/* Properties Drawer */}
         <GearProperties 
             gear={selectedGear} 
             allGears={gears}
