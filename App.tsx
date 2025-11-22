@@ -241,6 +241,10 @@ const App: React.FC = () => {
               const isBevel1 = def1.isBevel;
               const isBevel2 = def2.isBevel;
               
+              // Worm Logic
+              const isWorm1 = def1.isWorm;
+              const isWorm2 = def2.isWorm;
+
               // Determine if Flat or Vertical
               const isFlat1 = !g1.orientation || g1.orientation === 'flat';
               const isFlat2 = !g2.orientation || g2.orientation === 'flat';
@@ -248,7 +252,7 @@ const App: React.FC = () => {
               const dist = getDistance(g1.x, g1.y, g2.x, g2.y);
               
               // CASE 1: Standard Flat Mesh (Spur Gears)
-              if (isFlat1 && isFlat2 && !def1.isAxle && !def2.isAxle) {
+              if (isFlat1 && isFlat2 && !def1.isAxle && !def2.isAxle && !isWorm1 && !isWorm2) {
                   const idealDist = def1.radius + def2.radius;
                   if (Math.abs(dist - idealDist) < 5) {
                       g1.connectedTo.push(g2.id);
@@ -256,11 +260,30 @@ const App: React.FC = () => {
                   }
                   continue;
               }
+              
+              // CASE 5: Worm to Flat Gear
+              let flatG = null;
+              let wormG = null;
+              let flatDef = null;
+              let wormDef = null;
+              
+              if (isWorm1 && !isWorm2 && !def2.isAxle && isFlat2) { wormG = g1; flatG = g2; wormDef = def1; flatDef = def2; }
+              else if (isWorm2 && !isWorm1 && !def1.isAxle && isFlat1) { wormG = g2; flatG = g1; wormDef = def2; flatDef = def1; }
+              
+              if (wormG && flatG && wormDef && flatDef) {
+                   const idealDist = flatDef.radius + wormDef.radius; // Approx 15px radius for worm cylinder
+                   
+                   if (Math.abs(dist - idealDist) < 10) {
+                       g1.connectedTo.push(g2.id);
+                       g2.connectedTo.push(g1.id);
+                   }
+                   continue;
+              }
 
               // CASE 2: Bevel to Flat (Corner)
-              let flatG = null;
+              flatG = null;
               let bevelG = null;
-              let flatDef = null;
+              flatDef = null;
               let bevelDef = null;
               
               if (isFlat1 && !isFlat2 && isBevel2) { flatG = g1; flatDef = def1; bevelG = g2; bevelDef = def2; }
@@ -311,8 +334,8 @@ const App: React.FC = () => {
                    }
               }
               
-              // CASE 4: Axle Connection (Tips connect to Bevels)
-              if (def1.isAxle && isBevel2) {
+              // CASE 4: Axle Connection (Tips connect to Bevels OR Worms)
+              if (def1.isAxle && (isBevel2 || isWorm2)) {
                   const len = (g1.length || 3) * HOLE_SPACING;
                   const isHorz = g1.rotation === 0;
                   
@@ -329,13 +352,13 @@ const App: React.FC = () => {
                   const d1 = Math.hypot(tip1x - g2.x, tip1y - g2.y);
                   const d2 = Math.hypot(tip2x - g2.x, tip2y - g2.y);
                   
-                  // Check if tips are close to the CENTER of the bevel gear
+                  // Check if tips are close to the CENTER of the bevel/worm gear
                   if (d1 < 20 || d2 < 20) { 
                        g1.connectedTo.push(g2.id);
                        g2.connectedTo.push(g1.id);
                   }
               }
-              else if (def2.isAxle && isBevel1) {
+              else if (def2.isAxle && (isBevel1 || isWorm1)) {
                   const len = (g2.length || 3) * HOLE_SPACING;
                   const isHorz = g2.rotation === 0;
                   let tip1x, tip1y, tip2x, tip2y;
@@ -394,7 +417,7 @@ const App: React.FC = () => {
                  if(other.axleId === gear.axleId) continue;
                  const otherDef = GEAR_DEFS[other.type];
                  if(!otherDef.isAxle) {
-                     // Check if the gear would be on this axle
+                     // Check if the gear is on this axle
                      if (isOverlappingAxle(other.x, other.y, gear, 20)) {
                          if (Math.abs(gear.x - other.x) < 20 && Math.abs(gear.y - other.y) < 20) {
                              bestX = other.x;
@@ -476,6 +499,7 @@ const App: React.FC = () => {
       if (!snapped && !def.isAxle) {
           const isBevel = def.isBevel;
           const isVertical = gear.orientation && gear.orientation !== 'flat';
+          const isWorm = def.isWorm;
 
           let minDiff = 15; 
           for (const other of others) {
@@ -494,7 +518,10 @@ const App: React.FC = () => {
 
               if (isBevel && isVertical && (!other.orientation || other.orientation === 'flat')) {
                   idealDist = otherDef.radius + 9; 
-              } 
+              }
+              if (isWorm) {
+                  idealDist = otherDef.radius + def.radius; // Worm radius is approx 15px
+              }
               
               if (Math.abs(currentDist - idealDist) < minDiff) {
                   const angle = Math.atan2(gear.y - other.y, gear.x - other.x);
@@ -871,6 +898,9 @@ const App: React.FC = () => {
              if (def.isAxle) {
                  // Axle: 0 -> 90 -> 0 (Orientation only)
                  return { ...g, rotation: g.rotation === 0 ? 90 : 0 };
+             } else if (def.isWorm) {
+                 // Worm: 0 -> 90 -> 0
+                 return { ...g, rotation: g.rotation === 0 ? 90 : 0 };
              } else if (def.isBevel) {
                  let newOrientation: GearOrientation = 'flat';
                  const current = g.orientation || 'flat';
@@ -915,7 +945,7 @@ const App: React.FC = () => {
         }
         if (e.key.toLowerCase() === 'm' && selectedId) {
              const g = gears.find(g => g.id === selectedId);
-             if (g && !g.fixed && !GEAR_DEFS[g.type].isAxle) {
+             if (g && !g.fixed && !GEAR_DEFS[g.type].isAxle && !GEAR_DEFS[g.type].isWorm) {
                  updateGear(selectedId, { isMotor: !g.isMotor });
                  audioManager.playSnap();
              }
@@ -970,10 +1000,11 @@ const App: React.FC = () => {
             changed = true;
             const rotationStep = gear.rpm * 0.1 * dt;
             
-            // Special handling for Axles: 
+            // Special handling for Axles and Worm Gears: 
             // 'rotation' is used for Orientation (0 or 90), so we must NOT animate it continuously.
             // Instead, we use 'step' for the internal texture animation.
-            if (GEAR_DEFS[gear.type].isAxle) {
+            const def = GEAR_DEFS[gear.type];
+            if (def.isAxle || def.isWorm) {
                 const currentStep = gear.step || 0;
                 // Multiply by direction to spin correct way
                 return { ...gear, step: (currentStep + (rotationStep * gear.direction)) % 360 };
@@ -995,6 +1026,13 @@ const App: React.FC = () => {
     animationFrameId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animationFrameId);
   }, []);
+
+  // --- Window Event Listeners for Dragging ---
+  // MOVED TO END to resolve block-scoped variable used before declaration
+  
+  const handleDragStart = useCallback(() => {}, []); // Placeholder if needed for consistency
+
+  const handleDragEnd = useCallback(() => {}, []);
 
   // --- Coordinate Helpers ---
   const screenToWorld = useCallback((sx: number, sy: number) => {
@@ -1708,14 +1746,21 @@ const App: React.FC = () => {
     }
   }, [draggingAxleId, draggingBrickId, pushHistory, belts, bricks, recalculateConnections, snapGear, snapBrick]);
 
+  // --- Window Event Listeners for Dragging ---
   useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    const onMove = (e: MouseEvent) => handleMouseMove(e);
+    const onUp = () => handleMouseUp();
+
+    if (draggingAxleId || draggingBrickId || isPanning) {
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }
+
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
     };
-  }, [handleMouseMove, handleMouseUp]);
+  }, [draggingAxleId, draggingBrickId, isPanning, handleMouseMove, handleMouseUp]);
   
   return (
     <div className="flex h-screen w-screen overflow-hidden select-none transition-colors duration-300" style={{ backgroundColor: 'var(--bg-app)' }}>
@@ -1818,7 +1863,14 @@ const App: React.FC = () => {
                         <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showSpecs ? 'var(--text-accent)' : 'var(--border-color)', borderColor: showSpecs ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
                             <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showSpecs ? 'translate-x-3' : ''}`}></div>
                         </div>
-                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showSpecs ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.specs}</span>
+                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showSpecs ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.spec}</span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
+                        <input type="checkbox" checked={showRpm} onChange={(e) => setShowRpm(e.target.checked)} className="peer sr-only" />
+                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showRpm ? 'var(--text-accent)' : 'var(--border-color)', borderColor: showRpm ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
+                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showRpm ? 'translate-x-3' : ''}`}></div>
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRpm ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.rpm}</span>
                     </label>
                     <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
                         <input type="checkbox" checked={showRatio} onChange={(e) => setShowRatio(e.target.checked)} className="peer sr-only" />
@@ -1839,7 +1891,7 @@ const App: React.FC = () => {
                         <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showRoles ? '#4ade80' : 'var(--border-color)', borderColor: showRoles ? '#4ade80' : 'var(--text-secondary)' }}>
                             <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showRoles ? 'translate-x-3' : ''}`}></div>
                         </div>
-                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRoles ? '#4ade80' : 'var(--text-muted)' }}>{t.roles}</span>
+                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRoles ? '#4ade80' : 'var(--text-muted)' }}>{t.role}</span>
                     </label>
                 </div>
             </div>

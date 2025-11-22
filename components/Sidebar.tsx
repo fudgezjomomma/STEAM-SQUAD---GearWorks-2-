@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { GearType, Lesson } from '../types';
 import { GEAR_DEFS, BEAM_SIZES, BRICK_SIZES, HOLE_SPACING, BRICK_WIDTH, BRICK_THEME_COLORS, AXLE_SIZES } from '../constants';
-import { generateGearPath } from '../utils/gearMath';
+import { generateGearPath, generateWormProfile } from '../utils/gearMath';
 import { CHALLENGES } from '../data/challenges';
 import { LESSONS } from '../data/lessons';
 import { TRANSLATIONS, Language } from '../utils/translations';
@@ -26,7 +26,11 @@ interface SidebarProps {
 }
 
 const PreviewGear: React.FC<{ def: any, theme: 'dark' | 'light' | 'steam' }> = ({ def, theme }) => {
-    const pathData = useMemo(() => generateGearPath(def.teeth, def.radius), [def.teeth, def.radius]);
+    const pathData = useMemo(() => {
+        if (def.isWorm) return generateWormProfile(def.radius);
+        return generateGearPath(def.teeth, def.radius);
+    }, [def.teeth, def.radius, def.isWorm]);
+
     const color = def.colors[theme];
     const opacity = theme === 'steam' ? "0.9" : "0.8";
 
@@ -42,6 +46,10 @@ const PreviewGear: React.FC<{ def: any, theme: 'dark' | 'light' | 'steam' }> = (
                 strokeWidth="1"
                 style={{ filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.1))' }}
             />
+            {def.isWorm && (
+                // Decorative threads for preview
+                <path d="M -10 -5 L 10 -5 M -10 5 L 10 5" stroke="rgba(255,255,255,0.3)" strokeWidth="1" />
+            )}
         </svg>
     );
 };
@@ -216,6 +224,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                                 BEVEL
                             </span>
                         )}
+                        {def.isWorm && (
+                            <span className="absolute top-0 right-0 bg-orange-500 text-[9px] font-black px-1.5 py-0.5 rounded-full text-white shadow-sm z-10">
+                                WORM
+                            </span>
+                        )}
                         <div className="transform scale-75">
                              <PreviewGear def={def} theme={theme} />
                         </div>
@@ -223,7 +236,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onDragStart, onAddGear, onAddB
                           <button className="text-white text-xs px-3 py-1.5 rounded-lg shadow-lg border-2 font-extrabold cursor-pointer uppercase tracking-wider transform scale-110" style={{ backgroundColor: 'var(--text-accent)', borderColor: 'white' }} onClick={(e) => { e.stopPropagation(); onAddGear(def.type); }} draggable={false}>{t.add}</button>
                         </div>
                       </div>
-                      <span className="font-mono font-bold mt-2 text-xs tracking-wider" style={{ color: 'var(--text-secondary)' }}>{def.teeth} {t.teeth}</span>
+                      <span className="font-mono font-bold mt-2 text-xs tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                        {def.isWorm ? "Worm Gear" : `${def.teeth} ${t.teeth}`}
+                      </span>
                     </div>
                   ))}
               </div>

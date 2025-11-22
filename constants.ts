@@ -39,7 +39,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#94A3B8',  // Slate-400
         light: '#EF4444', // Red-500
-        steam: '#71717A'  // Zinc-500 (Darker Gray)
+        steam: '#3f3f46'  // Zinc-700 (Darker Gray)
     }
   },
   [GearType.Twelve]: {
@@ -49,7 +49,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#67E8F9',  // Cyan-300
         light: '#F97316', // Orange-500
-        steam: '#64748B'  // Slate-500
+        steam: '#3f3f46'  // Zinc-700
     }
   },
   [GearType.Bevel12]: {
@@ -60,7 +60,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#FCD34D',  // Amber-300 (Bevel Distinct)
         light: '#D97706', // Amber-600
-        steam: '#52525B'  // Zinc-600 (Steam standard)
+        steam: '#27272a'  // Zinc-800 (Steam standard)
     }
   },
   [GearType.Medium]: {
@@ -70,7 +70,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#2DD4BF',  // Teal-400
         light: '#84CC16', // Lime-500
-        steam: '#52525B'  // Zinc-600
+        steam: '#27272a'  // Zinc-800
     }
   },
   [GearType.MediumLarge]: {
@@ -80,7 +80,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#22D3EE',  // Cyan-400
         light: '#10B981', // Emerald-500
-        steam: '#475569'  // Slate-600
+        steam: '#27272a'  // Zinc-800
     }
   },
   [GearType.Bevel20]: {
@@ -91,7 +91,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#FBBF24',  // Amber-400
         light: '#B45309', // Amber-700
-        steam: '#3F3F46'  // Zinc-700
+        steam: '#27272a'  // Zinc-800
     }
   },
   [GearType.Large]: {
@@ -101,7 +101,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#38BDF8',  // Sky-400
         light: '#06B6D4', // Cyan-500
-        steam: '#3F3F46'  // Zinc-700
+        steam: '#18181b'  // Zinc-900
     }
   },
   [GearType.TwentyEight]: {
@@ -111,7 +111,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#60A5FA',  // Blue-400
         light: '#3B82F6', // Blue-500
-        steam: '#334155'  // Slate-700
+        steam: '#18181b'  // Zinc-900
     }
   },
   [GearType.ThirtySix]: {
@@ -121,7 +121,7 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#818CF8',  // Indigo-400
         light: '#8B5CF6', // Violet-500
-        steam: '#27272A'  // Zinc-800
+        steam: '#18181b'  // Zinc-900
     }
   },
   [GearType.ExtraLarge]: {
@@ -131,7 +131,18 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
     colors: {
         dark: '#A78BFA',  // Violet-400
         light: '#D946EF', // Fuchsia-500
-        steam: '#18181B'  // Zinc-900
+        steam: '#09090b'  // Zinc-950
+    }
+  },
+  [GearType.Worm]: {
+    type: GearType.Worm,
+    teeth: 1, // Effectively 1 tooth for ratio calculations
+    radius: 15, // Visual width (Cylinder)
+    isWorm: true,
+    colors: {
+        dark: '#D97706', // Amber-600 (Bronze/Brass)
+        light: '#B45309', // Amber-700
+        steam: '#EAB308'  // Yellow-500 (Gold)
     }
   },
   [GearType.Axle]: {

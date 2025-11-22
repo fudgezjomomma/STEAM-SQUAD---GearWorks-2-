@@ -122,6 +122,19 @@ export const generateBevelSideProfile = (radius: number): string => {
 };
 
 /**
+ * Generates Rectangular path for Worm Gear (Side View / Top Down)
+ */
+export const generateWormProfile = (width: number): string => {
+    const height = 30; // Standard length of worm gear element on screen
+    const x1 = -width;
+    const x2 = width;
+    const y1 = -height / 2;
+    const y2 = height / 2;
+
+    return `M ${x1} ${y1} L ${x2} ${y1} L ${x2} ${y2} L ${x1} ${y2} Z`;
+};
+
+/**
  * Generates an SVG path for a belt connecting two gears (external tangents)
  */
 export const generateBeltPath = (
@@ -217,7 +230,15 @@ export const propagatePhysics = (gears: GearState[], belts: Belt[] = []): GearSt
   });
 
   // 2. Identify Motor Axles
-  const queue: { axleId: string, sourceSpeed: number, sourceRpm: number, sourceTorque: number, sourceDir: 1 | -1, sourceRatio: number }[] = [];
+  const queue: { 
+    axleId: string, 
+    sourceSpeed: number, 
+    sourceRpm: number, 
+    sourceTorque: number, 
+    sourceDir: 1 | -1, 
+    sourceRatio: number,
+    fromAxleId?: string 
+  }[] = [];
   const visitedAxles = new Set<string>();
   
   const motorConnectedAxles = new Map<string, Set<string>>(); 
@@ -242,10 +263,11 @@ export const propagatePhysics = (gears: GearState[], belts: Belt[] = []): GearSt
       queue.push({ 
         axleId: axleId, 
         sourceSpeed: motor.motorSpeed, 
-        sourceRpm: motor.motorRpm,
+        sourceRpm: motor.motorRpm, 
         sourceTorque: startTorque,
         sourceDir: motor.motorDirection,
-        sourceRatio: 1 
+        sourceRatio: 1,
+        fromAxleId: undefined // Source has no parent
       });
     }
   });
@@ -253,7 +275,7 @@ export const propagatePhysics = (gears: GearState[], belts: Belt[] = []): GearSt
   // 3. BFS Propagation (Axle to Axle)
   let head = 0;
   while(head < queue.length) {
-    const { axleId, sourceSpeed, sourceRpm, sourceTorque, sourceDir, sourceRatio } = queue[head++];
+    const { axleId, sourceSpeed, sourceRpm, sourceTorque, sourceDir, sourceRatio, fromAxleId } = queue[head++];
     
     const currentAxleGears = axleMap.get(axleId);
     if (!currentAxleGears) continue;
@@ -272,6 +294,42 @@ export const propagatePhysics = (gears: GearState[], belts: Belt[] = []): GearSt
         const neighborAxleId = neighbor.axleId;
         if (neighborAxleId === axleId) continue;
 
+        // Skip parent to avoid back-propagation Jam Check (Critical for Worm Gears)
+        if (neighborAxleId === fromAxleId) continue;
+
+        // WORM GEAR LOGIC: Self-Locking check
+        // A standard gear CANNOT drive a worm gear (unless it is an Axle/Shaft driving it).
+        // If currentGear is NOT a worm, and neighbor IS a worm, this is an invalid power transfer (Self-Lock).
+        // Exception: If currentGear is an Axle, it CAN drive a worm (representing a drive shaft).
+        const defCurrent = GEAR_DEFS[currentGear.type];
+        const defNeighbor = GEAR_DEFS[neighbor.type];
+
+        if (!defCurrent.isWorm && defNeighbor.isWorm && !defCurrent.isAxle) {
+            // Self-Locking: The worm blocks the driver.
+            // Jam the source axle and ALL connected upstream axles recursively.
+            
+            for (const [_, connectedSet] of motorConnectedAxles) {
+                if (connectedSet.has(axleId)) {
+                    connectedSet.forEach(connectedId => {
+                        const connectedGears = axleMap.get(connectedId);
+                        if (connectedGears) {
+                            connectedGears.forEach(g => { 
+                                g.isJammed = true; 
+                                g.speed = 0; 
+                                g.rpm = 0; 
+                            });
+                        }
+                    });
+                }
+            }
+            
+            // Also explicitly jam the current one just in case it wasn't in a set yet
+            const sourceGears = axleMap.get(axleId);
+            if(sourceGears) sourceGears.forEach(g => { g.isJammed = true; g.speed = 0; g.rpm = 0; });
+            
+            continue;
+        }
+
         processConnection(
           axleId, neighborAxleId, currentGear, neighbor, 
           sourceSpeed, sourceRpm, sourceTorque, sourceDir, sourceRatio,
@@ -289,6 +347,9 @@ export const propagatePhysics = (gears: GearState[], belts: Belt[] = []): GearSt
 
           const neighborAxleId = neighbor.axleId;
           if (neighborAxleId === axleId) continue;
+          
+          // Skip parent
+          if (neighborAxleId === fromAxleId) continue;
 
           processConnection(
             axleId, neighborAxleId, currentGear, neighbor,
@@ -345,7 +406,8 @@ function processConnection(
     const defSource = GEAR_DEFS[sourceGear.type];
     const defTarget = GEAR_DEFS[targetGear.type];
     
-    // Fix: Axles have 0 teeth, avoid div/0. Axles/Bevels transfer 1:1 if coupled this way
+    // Fix: Axles have 0 teeth, avoid div/0. Axles/Bevels transfer 1:1 if coupled this way.
+    // Worm Gear Logic: Worm has 1 tooth.
     const teethIn = defSource.teeth || 1;
     const teethOut = defTarget.teeth || 1;
     
@@ -361,12 +423,13 @@ function processConnection(
     const targetSpeed = sourceSpeed * speedRatio;
     const targetRpm = sourceRpm * speedRatio;
     const targetTorque = sourceTorque * torqueRatio;
+    
     // MESH reverses direction (-1), BELT maintains direction (1)
     const targetDir = (sourceDir * (isMesh ? -1 : 1)) as 1 | -1; 
     const targetRatio = sourceRatio * speedRatio;
 
     if (visitedAxles.has(targetAxleId)) {
-        // Check for JAM
+        // Check for JAM (Conflict)
         const targetAxleGears = axleMap.get(targetAxleId)!;
         const refGear = targetAxleGears[0];
         
@@ -391,9 +454,10 @@ function processConnection(
             axleId: targetAxleId, 
             sourceSpeed: targetSpeed, 
             sourceRpm: targetRpm, 
-            sourceTorque: targetTorque,
+            sourceTorque: targetTorque, 
             sourceDir: targetDir,
-            sourceRatio: targetRatio
+            sourceRatio: targetRatio,
+            fromAxleId: sourceAxleId // Track parent to prevent Jam back-propagation
         });
     }
 }

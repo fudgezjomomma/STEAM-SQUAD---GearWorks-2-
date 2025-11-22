@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { GearState, GearType } from '../types';
 import { GEAR_DEFS, HOLE_SPACING } from '../constants';
-import { generateGearPath, generateBevelSideProfile } from '../utils/gearMath';
+import { generateGearPath, generateBevelSideProfile, generateWormProfile } from '../utils/gearMath';
 import { TRANSLATIONS, Language } from '../utils/translations';
 
 interface GearProps {
@@ -48,14 +48,18 @@ export const GearComponent: React.FC<GearProps> = ({
   const isFlat = orientation === 'flat';
   const isBevel = def.isBevel;
   const isAxle = def.isAxle;
+  const isWorm = def.isWorm;
 
   const pathData = useMemo(() => {
+      if (isWorm) {
+          return generateWormProfile(def.radius);
+      }
       if (isBevel && !isFlat) {
           return generateBevelSideProfile(def.radius);
       }
       if (isAxle) return ""; // Handled via rects
       return generateGearPath(def.teeth, def.radius);
-  }, [def.teeth, def.radius, isBevel, isFlat, isAxle]);
+  }, [def.teeth, def.radius, isBevel, isFlat, isAxle, isWorm]);
 
   const isTopGear = useMemo(() => {
     if (axleMates.length === 0) return true;
@@ -102,6 +106,14 @@ export const GearComponent: React.FC<GearProps> = ({
       }
       rotationStyle = { transform: `rotate(${visualRotation}deg)` };
   }
+  
+  // Worm gears also rotate like axles (0 or 90)
+  if (isWorm) {
+      rotationStyle = {
+        transform: `rotate(${gear.rotation}deg)`,
+        transition: 'transform 0.2s ease-out' 
+      };
+  }
 
   const isDark = theme === 'dark' || theme === 'steam';
   const gearColor = def.colors[theme];
@@ -138,6 +150,9 @@ export const GearComponent: React.FC<GearProps> = ({
   const axleShift = (gear.step || 0) * 0.5; 
   const axleCrossRotation = (gear.step || 0); // Rotate crosses directly with step degrees
 
+  // Worm Animation
+  const wormShift = (gear.step || 0) * 0.5;
+
   // Bounding Box for clicking
   let clickRect = { x: 0, y: 0, width: 0, height: 0 };
   if (isAxle) {
@@ -149,6 +164,9 @@ export const GearComponent: React.FC<GearProps> = ({
       } else {
          clickRect = { x: -15, y: -def.radius, width: 30, height: def.radius*2 };
       }
+  } else if (isWorm) {
+      // Worm bounding box (Standard size rect)
+      clickRect = { x: -def.radius, y: -15, width: def.radius*2, height: 30 };
   } else {
      clickRect = { x: -def.radius, y: -def.radius, width: def.radius*2, height: def.radius*2 }; 
   }
@@ -217,64 +235,109 @@ export const GearComponent: React.FC<GearProps> = ({
         {/* --- GEAR RENDERING --- */}
         {!isAxle && (
             <>
-                {isBevel && !isFlat && (
-                    <defs>
-                        <clipPath id={`clip-${gear.id}`}>
-                            <path d={pathData} />
-                        </clipPath>
-                    </defs>
-                )}
-
-                <path 
-                    d={pathData} 
-                    fill={gearColor} 
-                    fillOpacity={theme === 'steam' ? "0.9" : (isDark ? "0.65" : "0.85")}
-                    fillRule="evenodd" 
-                    stroke="none" 
-                    className="drop-shadow-sm"
-                />
-                
-                {/* Bevel Flat Inner Circle */}
-                {isFlat && def.isBevel && (
-                    <circle r={def.radius * 0.6} fill="none" stroke={outlineColor} strokeWidth="1" opacity="0.5" />
-                )}
-
-                {/* Vertical Bevel Animation */}
-                {isBevel && !isFlat && (
-                    <g clipPath={`url(#clip-${gear.id})`}>
-                        <rect 
-                            x={-100} y={-20} width={200} height={40} 
-                            fill={`url(#striped-pattern)`} 
-                            opacity="0.5"
-                            transform={`translate(${shift % 40}, 0)`} 
+                {/* WORM GEAR RENDERING */}
+                {isWorm && (
+                    <g>
+                        <defs>
+                            <clipPath id={`worm-clip-${gear.id}`}>
+                                <path d={pathData} />
+                            </clipPath>
+                        </defs>
+                        <path 
+                            d={pathData} 
+                            fill={gearColor} 
+                            stroke={outlineColor}
+                            strokeWidth="1.5"
+                            className="drop-shadow-sm"
                         />
-                        <path d={`M ${-def.radius} -10 L ${def.radius} -10`} stroke="white" strokeWidth="2" opacity="0.2" />
+                        {/* Animated Threads */}
+                        <g clipPath={`url(#worm-clip-${gear.id})`}>
+                            <rect 
+                                x={-40} y={-20} width={80} height={40} 
+                                fill={`url(#striped-pattern)`} 
+                                opacity="0.6"
+                                transform={`translate(${wormShift % 10}, 0)`} 
+                            />
+                            {/* Screw highlights */}
+                            <path d={`M ${-def.radius} -8 L ${def.radius} -8`} stroke="white" strokeWidth="1" opacity="0.3" />
+                            <path d={`M ${-def.radius} 8 L ${def.radius} 8`} stroke="white" strokeWidth="1" opacity="0.3" />
+                        </g>
                     </g>
+                )}
+
+                {/* STANDARD / BEVEL GEARS */}
+                {!isWorm && (
+                    <>
+                        {isBevel && !isFlat && (
+                            <defs>
+                                <clipPath id={`clip-${gear.id}`}>
+                                    <path d={pathData} />
+                                </clipPath>
+                            </defs>
+                        )}
+
+                        <path 
+                            d={pathData} 
+                            fill={gearColor} 
+                            fillOpacity={theme === 'steam' ? "0.9" : (isDark ? "0.65" : "0.85")}
+                            fillRule="evenodd" 
+                            stroke="none" 
+                            className="drop-shadow-sm"
+                        />
+                        
+                        {/* Bevel Flat Inner Circle */}
+                        {isFlat && def.isBevel && (
+                            <circle r={def.radius * 0.6} fill="none" stroke={outlineColor} strokeWidth="1" opacity="0.5" />
+                        )}
+
+                        {/* Vertical Bevel Animation */}
+                        {isBevel && !isFlat && (
+                            <g clipPath={`url(#clip-${gear.id})`}>
+                                <rect 
+                                    x={-100} y={-20} width={200} height={40} 
+                                    fill={`url(#striped-pattern)`} 
+                                    opacity="0.5"
+                                    transform={`translate(${shift % 40}, 0)`} 
+                                />
+                                <path d={`M ${-def.radius} -10 L ${def.radius} -10`} stroke="white" strokeWidth="2" opacity="0.2" />
+                            </g>
+                        )}
+                    </>
                 )}
 
                 {/* Selection Glow */}
                 {isSelected && (
                     <path d={pathData} fill="none" stroke={isDark ? "white" : "black"} strokeWidth="4" strokeOpacity="0.8" className="animate-pulse" style={{ filter: 'blur(1px)' }} />
                 )}
-                {(roleHighlight || isObjectiveTarget) && !isSelected && !gear.isStalled && (
+                {(roleHighlight || isObjectiveTarget) && !isSelected && !gear.isStalled && !gear.isJammed && (
                     <path d={pathData} fill="none" stroke={glowColor} strokeWidth="6" strokeOpacity="0.5" className="transition-all duration-300" style={{ filter: 'blur(3px)' }} />
                 )}
                 {gear.isStalled && (
                     <circle r={def.radius + 6} fill="none" stroke="#F87171" strokeWidth="6" strokeOpacity="0.4" className="animate-pulse" />
                 )}
                 
+                {/* Jammed Indicator */}
+                {gear.isJammed && (
+                    <g className="pointer-events-none">
+                        <circle r={def.radius + 6} fill="none" stroke="#ef4444" strokeWidth="4" strokeOpacity="0.8" className="animate-pulse" />
+                        <path d="M -10 -10 L 10 10 M 10 -10 L -10 10" stroke="#ef4444" strokeWidth="4" strokeLinecap="round" className="animate-pulse" />
+                    </g>
+                )}
+
                 {/* Outline */}
-                <path 
-                    d={pathData} 
-                    fill="none" 
-                    stroke={outlineColor} 
-                    strokeWidth={theme === 'steam' ? "1" : "1.5"} 
-                    className="transition-colors duration-200"
-                    vectorEffect="non-scaling-stroke" 
-                />
+                {!isWorm && (
+                    <path 
+                        d={pathData} 
+                        fill="none" 
+                        stroke={outlineColor} 
+                        strokeWidth={theme === 'steam' ? "1" : "1.5"} 
+                        className="transition-colors duration-200"
+                        vectorEffect="non-scaling-stroke" 
+                    />
+                )}
                 
                 {/* Motor Icon */}
-                {gear.isMotor && isFlat && (
+                {gear.isMotor && isFlat && !isWorm && (
                 <g transform="rotate(0) scale(1.5)">
                     <path d="M -2 -7 L 2 -7 L 2 -2 L 7 -2 L 7 2 L 2 2 L 2 7 L -2 7 L -2 2 L -7 2 L -7 -2 L -2 -2 Z" fill="#ef4444" stroke="#ef4444" strokeWidth="1" fillOpacity="0.8" />
                 </g>
@@ -313,9 +376,9 @@ export const GearComponent: React.FC<GearProps> = ({
                   <text y="5" textAnchor="middle" fill="#ef4444" fontSize="14" className="font-mono font-bold tracking-wider">DRIVE</text>
               </g>
           )}
-          {(gear.rpm !== 0 || gear.isStalled) && !gear.isJammed && isTopGear && !isAxle && (
+          {(gear.rpm !== 0 || gear.isStalled || gear.isJammed) && isTopGear && !isAxle && (
               <>
-                  {showRatio && !gear.isStalled && (
+                  {showRatio && !gear.isStalled && !gear.isJammed && (
                     <g transform={`translate(0, -${def.radius + 20})`}>
                         <path d="M -8 0 Q 0 -6 8 0" fill="none" stroke={arrowStroke} strokeWidth="3" markerEnd="url(#arrowhead)" transform={gear.direction === 1 ? "scale(1,1)" : "scale(-1,1)"} />
                     </g>
@@ -329,7 +392,7 @@ export const GearComponent: React.FC<GearProps> = ({
                   {showRpm && (
                       <g transform={`translate(0, ${def.radius + (showRatio ? 56 : 24)})`}>
                           <rect x="-40" y="-12" width="80" height="24" rx="6" fill="#020617" fillOpacity="0.85" stroke={labelBoxStroke} strokeWidth="2" />
-                          <text y="5" textAnchor="middle" fill="#F9FAFB" fontSize="14" className="font-mono font-bold">{gear.isStalled ? 0 : Math.round(Math.abs(gear.rpm))} RPM</text>
+                          <text y="5" textAnchor="middle" fill="#F9FAFB" fontSize="14" className="font-mono font-bold">{gear.isStalled || gear.isJammed ? 0 : Math.round(Math.abs(gear.rpm))} RPM</text>
                       </g>
                   )}
                   {showTorque && (

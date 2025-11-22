@@ -10,6 +10,7 @@ export enum GearType {
   TwentyEight = 'TwentyEight', // 28T
   ThirtySix = 'ThirtySix', // 36T
   ExtraLarge = 'ExtraLarge', // 40T
+  Worm = 'Worm',           // Worm Gear (Screw)
   Axle = 'Axle'            // Drive Shaft
 }
 
@@ -24,6 +25,7 @@ export interface GearDef {
   };
   isBevel?: boolean; // Helper flag
   isAxle?: boolean; // Helper flag
+  isWorm?: boolean; // Helper flag
 }
 
 export interface Belt {
