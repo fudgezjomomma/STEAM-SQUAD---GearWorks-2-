@@ -1,5 +1,6 @@
 
-import { GEAR_DEFS } from '../constants';
+
+import { GEAR_DEFS, HOLE_SPACING, BRICK_WIDTH } from '../constants';
 import { GearState, GearType, Belt } from '../types';
 
 /**
@@ -132,6 +133,64 @@ export const generateWormProfile = (width: number): string => {
     const y2 = height / 2;
 
     return `M ${x1} ${y1} L ${x2} ${y1} L ${x2} ${y2} L ${x1} ${y2} Z`;
+};
+
+/**
+ * Generates an SVG path for a Liftarm
+ */
+export const generateLiftarmProfile = (length: number, shape: 'straight' | 'L' = 'straight'): string => {
+    const radius = BRICK_WIDTH / 2;
+    let path = "";
+
+    if (shape === 'straight') {
+        const totalLen = (length - 1) * HOLE_SPACING;
+        
+        path += `M 0 ${-radius}`;
+        path += ` L ${totalLen} ${-radius}`;
+        path += ` A ${radius} ${radius} 0 0 1 ${totalLen} ${radius}`;
+        path += ` L 0 ${radius}`;
+        path += ` A ${radius} ${radius} 0 0 1 0 ${-radius}`;
+        path += ` Z`;
+
+        for(let i=0; i<length; i++) {
+            const hx = i * HOLE_SPACING;
+            const hr = 8;
+            path += ` M ${hx - hr} 0`;
+            path += ` A ${hr} ${hr} 0 1 0 ${hx + hr} 0`;
+            path += ` A ${hr} ${hr} 0 1 0 ${hx - hr} 0 Z`;
+        }
+    } else {
+        // L-Shape (Assuming 3xLength)
+        const longLen = (length - 1) * HOLE_SPACING;
+        const shortLen = (3 - 1) * HOLE_SPACING; 
+
+        path += `M 0 ${-radius}`;
+        path += ` L ${longLen} ${-radius}`;
+        path += ` A ${radius} ${radius} 0 0 1 ${longLen} ${radius}`;
+        path += ` L ${radius} ${radius}`;
+        path += ` L ${radius} ${shortLen}`;
+        path += ` A ${radius} ${radius} 0 0 1 ${-radius} ${shortLen}`;
+        path += ` L ${-radius} 0`;
+        path += ` A ${radius} ${radius} 0 0 1 0 ${-radius}`;
+        path += ` Z`;
+        
+        for(let i=1; i<length; i++) { 
+            const hx = i * HOLE_SPACING;
+            const hr = 8;
+            path += ` M ${hx - hr} 0`;
+            path += ` A ${hr} ${hr} 0 1 0 ${hx + hr} 0`;
+            path += ` A ${hr} ${hr} 0 1 0 ${hx - hr} 0 Z`;
+        }
+        for(let i=0; i<3; i++) { 
+             const hy = i * HOLE_SPACING;
+             const hr = 8;
+             path += ` M ${-hr} ${hy}`;
+             path += ` A ${hr} ${hr} 0 1 0 ${hr} ${hy}`;
+             path += ` A ${hr} ${hr} 0 1 0 ${-hr} ${hy} Z`;
+        }
+    }
+    
+    return path;
 };
 
 /**

@@ -1,5 +1,4 @@
 
-
 import React from 'react';
 import { BrickState } from '../types';
 import { HOLE_SPACING, BRICK_WIDTH, BRICK_CORNER_RADIUS, BRICK_THEME_COLORS } from '../constants';
@@ -57,7 +56,7 @@ export const BrickComponent: React.FC<BrickProps> = ({
       onMouseDown={(e) => onMouseDown(e, brick.id)}
       onTouchStart={(e) => onTouchStart(e, brick.id)}
       onDoubleClick={(e) => onDoubleClick(e, brick.id)}
-      style={{ cursor: brick.fixed ? 'default' : (isSelected ? 'grabbing' : 'grab') }}
+      style={{ cursor: brick.fixed ? 'pointer' : (isSelected ? 'grabbing' : 'grab') }}
     >
       {!isBeam && Array.from({ length: studCount }).map((_, i) => (
           <rect 

@@ -11,7 +11,8 @@ export enum GearType {
   ThirtySix = 'ThirtySix', // 36T
   ExtraLarge = 'ExtraLarge', // 40T
   Worm = 'Worm',           // Worm Gear (Screw)
-  Axle = 'Axle'            // Drive Shaft
+  Axle = 'Axle',           // Drive Shaft
+  Liftarm = 'Liftarm'      // Rotating Beam
 }
 
 export interface GearDef {
@@ -46,11 +47,17 @@ export interface GearState {
   axleId: string; // Group ID for compound gears. Gears with same axleId rotate together.
   type: GearType;
   length?: number; // For Axles only (in hole units)
+  liftarmShape?: 'straight' | 'L'; // For Liftarms only
   x: number;
   y: number;
   rotation: number; // Current rotation (Z-axis for Gears; Orientation for Axles)
   step?: number;    // Animation phase (0-360) for Axles (Visual spin)
   fixed?: boolean; // Cannot be moved or deleted
+  colorOverride?: string; // Specific color for challenges/tutorials
+  customLabel?: string; // Custom text label (e.g., "TARGET")
+  
+  // Layers (Z-Depth)
+  layer?: number; // 1, 2, 3 (Default 1)
   
   // Bevel Logic
   orientation?: GearOrientation; // Default is flat

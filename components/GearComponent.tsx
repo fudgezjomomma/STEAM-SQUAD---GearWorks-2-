@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { GearState, GearType } from '../types';
 import { GEAR_DEFS, HOLE_SPACING } from '../constants';
-import { generateGearPath, generateBevelSideProfile, generateWormProfile } from '../utils/gearMath';
+import { generateGearPath, generateBevelSideProfile, generateWormProfile, generateLiftarmProfile } from '../utils/gearMath';
 import { TRANSLATIONS, Language } from '../utils/translations';
 
 interface GearProps {
@@ -15,6 +15,7 @@ interface GearProps {
   showRatio: boolean; 
   showRpm: boolean;   
   showTorque: boolean; 
+  showLayers: boolean;
   lang: Language;     
   theme: 'dark' | 'light' | 'steam'; 
   onMouseDown: (e: React.MouseEvent, gearId: string) => void;
@@ -33,6 +34,7 @@ export const GearComponent: React.FC<GearProps> = ({
   showRatio,
   showRpm,
   showTorque,
+  showLayers,
   lang,
   theme,
   onMouseDown, 
@@ -49,6 +51,7 @@ export const GearComponent: React.FC<GearProps> = ({
   const isBevel = def.isBevel;
   const isAxle = def.isAxle;
   const isWorm = def.isWorm;
+  const isLiftarm = gear.type === GearType.Liftarm;
 
   const pathData = useMemo(() => {
       if (isWorm) {
@@ -58,8 +61,11 @@ export const GearComponent: React.FC<GearProps> = ({
           return generateBevelSideProfile(def.radius);
       }
       if (isAxle) return ""; // Handled via rects
+      if (isLiftarm) {
+          return generateLiftarmProfile(gear.length || 3, gear.liftarmShape || 'straight');
+      }
       return generateGearPath(def.teeth, def.radius);
-  }, [def.teeth, def.radius, isBevel, isFlat, isAxle, isWorm]);
+  }, [def.teeth, def.radius, isBevel, isFlat, isAxle, isWorm, isLiftarm, gear.length, gear.liftarmShape]);
 
   const isTopGear = useMemo(() => {
     if (axleMates.length === 0) return true;
@@ -84,7 +90,7 @@ export const GearComponent: React.FC<GearProps> = ({
 
   const positionStyle = {
     transform: `translate(${gear.x}px, ${gear.y}px)`,
-    cursor: gear.fixed ? 'default' : (isSelected ? 'grab' : 'pointer'),
+    cursor: gear.fixed ? 'pointer' : (isSelected ? 'grab' : 'pointer'),
   };
 
   // Rotation logic
@@ -92,7 +98,7 @@ export const GearComponent: React.FC<GearProps> = ({
   let visualRotation = 0;
   let animationMultiplier = 1;
 
-  if (isFlat || isAxle) {
+  if (isFlat || isAxle || isLiftarm) {
       rotationStyle = {
         transform: `rotate(${gear.rotation}deg)`,
         transition: isAxle ? 'transform 0.2s ease-out' : 'transform 0s linear' // Smooth rotate for axles when changing orientation
@@ -116,7 +122,9 @@ export const GearComponent: React.FC<GearProps> = ({
   }
 
   const isDark = theme === 'dark' || theme === 'steam';
-  const gearColor = def.colors[theme];
+  
+  // Use override color if present, otherwise theme color
+  const gearColor = gear.colorOverride ? gear.colorOverride : def.colors[theme];
   
   let glowColor = isDark ? '#38BDF8' : '#0EA5E9';
   if (theme === 'steam') glowColor = '#fecc00';
@@ -158,6 +166,10 @@ export const GearComponent: React.FC<GearProps> = ({
   if (isAxle) {
       const len = (gear.length || 3) * HOLE_SPACING;
       clickRect = { x: -len/2, y: -10, width: len, height: 20 };
+  } else if (isLiftarm) {
+      // Simplified bounding box for liftarms - covers max extent
+      // Ideally this matches the shape, but a rect is usually fine for clicking
+      clickRect = { x: -20, y: -20, width: (gear.length || 3)*HOLE_SPACING + 40, height: (gear.liftarmShape === 'L' ? 3*HOLE_SPACING : 0) + 40 };
   } else if (isBevel && !isFlat) {
       if (orientation === 'bevel_up' || orientation === 'bevel_down') {
          clickRect = { x: -def.radius, y: -15, width: def.radius*2, height: 30 };
@@ -170,11 +182,20 @@ export const GearComponent: React.FC<GearProps> = ({
   } else {
      clickRect = { x: -def.radius, y: -def.radius, width: def.radius*2, height: def.radius*2 }; 
   }
+  
+  // Layer Tint Logic (Depth shading)
+  const layer = gear.layer || 1;
+  // Layer 1: Opacity 100% (Normal)
+  // Layer 2: Opacity 80%
+  // Layer 3: Opacity 60%
+  const layerOpacity = layer === 1 ? 1 : (layer === 2 ? 0.8 : 0.6);
+  // Darken tint for back layers
+  const layerFilter = layer === 1 ? 'none' : (layer === 2 ? 'brightness(0.8)' : 'brightness(0.6)');
 
   return (
     <g 
       id={gear.id} 
-      style={positionStyle} 
+      style={{ ...positionStyle, filter: layerFilter }} 
       className="select-none group"
       onMouseDown={(e) => onMouseDown(e, gear.id)}
       onTouchStart={(e) => onTouchStart(e, gear.id)}
@@ -265,7 +286,7 @@ export const GearComponent: React.FC<GearProps> = ({
                     </g>
                 )}
 
-                {/* STANDARD / BEVEL GEARS */}
+                {/* STANDARD / BEVEL / LIFTARM GEARS */}
                 {!isWorm && (
                     <>
                         {isBevel && !isFlat && (
@@ -279,7 +300,7 @@ export const GearComponent: React.FC<GearProps> = ({
                         <path 
                             d={pathData} 
                             fill={gearColor} 
-                            fillOpacity={theme === 'steam' ? "0.9" : (isDark ? "0.65" : "0.85")}
+                            fillOpacity={theme === 'steam' ? `${0.9 * layerOpacity}` : (isDark ? `${0.65 * layerOpacity}` : `${0.85 * layerOpacity}`)}
                             fillRule="evenodd" 
                             stroke="none" 
                             className="drop-shadow-sm"
@@ -337,10 +358,23 @@ export const GearComponent: React.FC<GearProps> = ({
                 )}
                 
                 {/* Motor Icon */}
-                {gear.isMotor && isFlat && !isWorm && (
+                {gear.isMotor && isFlat && !isWorm && !isLiftarm && (
                 <g transform="rotate(0) scale(1.5)">
                     <path d="M -2 -7 L 2 -7 L 2 -2 L 7 -2 L 7 2 L 2 2 L 2 7 L -2 7 L -2 2 L -7 2 L -7 -2 L -2 -2 Z" fill="#ef4444" stroke="#ef4444" strokeWidth="1" fillOpacity="0.8" />
                 </g>
+                )}
+                
+                {/* Layer Badge (Large Visible Toggle) */}
+                {showLayers && !isAxle && (
+                    <g className="pointer-events-none">
+                        <circle r="10" fill="#000" fillOpacity="0.7" stroke="#fbbf24" strokeWidth="2" />
+                        <text y="4" textAnchor="middle" fill="#fbbf24" fontSize="12" fontWeight="bold">L{layer}</text>
+                    </g>
+                )}
+                
+                {/* Layer Badge (Small - Always visible if > 1 and not toggled) */}
+                {!showLayers && layer > 1 && !isAxle && (
+                    <text y="4" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="10" fontWeight="bold" className="pointer-events-none">L{layer}</text>
                 )}
             </>
         )}
@@ -364,7 +398,15 @@ export const GearComponent: React.FC<GearProps> = ({
               </g>
           )}
           
-          {showSpecs && !gear.isMotor && isTopGear && !isAxle && (
+          {/* Custom Label (Target, etc) */}
+          {gear.customLabel && isTopGear && (
+              <g transform={`translate(0, -${def.radius + 35})`}>
+                  <rect x={-(gear.customLabel.length * 5 + 10)} y="-12" width={gear.customLabel.length * 10 + 20} height="24" rx="4" fill="#ef4444" stroke="white" strokeWidth="1.5" />
+                  <text y="5" textAnchor="middle" fill="white" fontSize="12" className="font-mono font-bold tracking-wider">{gear.customLabel}</text>
+              </g>
+          )}
+          
+          {showSpecs && !gear.isMotor && isTopGear && !isAxle && !isLiftarm && (
               <g transform="translate(0, -4)">
                   <rect x={-(labelText.length * 6 + 12)} y="-14" width={labelText.length * 12 + 24} height="28" rx="6" fill="#020617" fillOpacity="0.85" stroke={labelBoxStroke} strokeWidth="2" />
                   <text y="6" textAnchor="middle" fill="#F9FAFB" fontSize="18" className="font-mono font-bold">{labelText}</text>
@@ -376,7 +418,7 @@ export const GearComponent: React.FC<GearProps> = ({
                   <text y="5" textAnchor="middle" fill="#ef4444" fontSize="14" className="font-mono font-bold tracking-wider">DRIVE</text>
               </g>
           )}
-          {(gear.rpm !== 0 || gear.isStalled || gear.isJammed) && isTopGear && !isAxle && (
+          {(gear.rpm !== 0 || gear.isStalled || gear.isJammed) && isTopGear && !isAxle && !isLiftarm && (
               <>
                   {showRatio && !gear.isStalled && !gear.isJammed && (
                     <g transform={`translate(0, -${def.radius + 20})`}>

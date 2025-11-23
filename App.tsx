@@ -6,85 +6,17 @@ import { GearComponent } from './components/GearComponent';
 import { BrickComponent } from './components/BrickComponent';
 import { GearProperties } from './components/GearProperties';
 import { TutorialOverlay, TutorialStep } from './components/TutorialOverlay';
+import { Toolbar } from './components/Toolbar';
+import { GlobalControls } from './components/GlobalControls';
 import { GearState, GearType, Belt, BrickState, Lesson, GearOrientation } from './types';
-import { GEAR_DEFS, SNAP_THRESHOLD, BASE_SPEED_MULTIPLIER, HOLE_SPACING, BEAM_SIZES, BRICK_WIDTH } from './constants';
+import { GEAR_DEFS, HOLE_SPACING } from './constants';
 import { getDistance, propagatePhysics, generateBeltPath } from './utils/gearMath';
 import { CHALLENGES } from './data/challenges';
 import { TRANSLATIONS, Language } from './utils/translations';
 import { audioManager } from './utils/audio';
 import { loadProgress, loadSettings, saveProgress, saveSettings } from './utils/storage';
-
-// Helper: Line Segment Intersection
-const lineIntersectsLine = (p0_x: number, p0_y: number, p1_x: number, p1_y: number, p2_x: number, p2_y: number, p3_x: number, p3_y: number) => {
-    let s1_x, s1_y, s2_x, s2_y;
-    s1_x = p1_x - p0_x;
-    s1_y = p1_y - p0_y;
-    s2_x = p3_x - p2_x;
-    s2_y = p3_y - p2_y;
-    let s, t;
-    s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
-    t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
-    if (s >= 0 && s <= 1 && t >= 0 && t <= 1) return true;
-    return false;
-}
-
-// Helper: Check if a point is on an axle (segment) with tolerance
-const isOverlappingAxle = (pointX: number, pointY: number, axle: GearState, tolerance: number = 10) => {
-    const len = (axle.length || 3) * HOLE_SPACING;
-    const isHorz = axle.rotation === 0; // Axle rotation is 0 or 90
-    
-    if (isHorz) {
-        // Horizontal: Y must match, X must be within range
-        if (Math.abs(pointY - axle.y) > tolerance) return false;
-        const minX = axle.x - len / 2;
-        const maxX = axle.x + len / 2;
-        return pointX >= minX - tolerance && pointX <= maxX + tolerance;
-    } else {
-        // Vertical: X must match, Y must be within range
-        if (Math.abs(pointX - axle.x) > tolerance) return false;
-        const minY = axle.y - len / 2;
-        const maxY = axle.y + len / 2;
-        return pointY >= minY - tolerance && pointY <= maxY + tolerance;
-    }
-};
-
-// Helper: Get closest valid mounting point on an axle
-const getClosestPointOnAxle = (x: number, y: number, axle: GearState) => {
-    const len = (axle.length || 3) * HOLE_SPACING;
-    const isHorz = axle.rotation === 0;
-    
-    if (isHorz) {
-        // Project X onto segment
-        const minX = axle.x - len / 2;
-        const maxX = axle.x + len / 2;
-        let clampedX = Math.max(minX, Math.min(maxX, x));
-        
-        // Snap to nearest HOLE_SPACING relative to center to align with studs
-        const relX = clampedX - axle.x;
-        const snappedRelX = Math.round(relX / 20) * 20;
-        clampedX = axle.x + snappedRelX;
-
-        if (clampedX < minX) clampedX = minX;
-        if (clampedX > maxX) clampedX = maxX;
-
-        return { x: clampedX, y: axle.y };
-    } else {
-        // Project Y onto segment
-        const minY = axle.y - len / 2;
-        const maxY = axle.y + len / 2;
-        let clampedY = Math.max(minY, Math.min(maxY, y));
-
-        const relY = clampedY - axle.y;
-        const snappedRelY = Math.round(relY / 20) * 20;
-        clampedY = axle.y + snappedRelY;
-
-        if (clampedY < minY) clampedY = minY;
-        if (clampedY > maxY) clampedY = maxY;
-
-        return { x: axle.x, y: clampedY };
-    }
-};
-
+import { isOverlappingAxle } from './utils/geometry';
+import { findFreeSpot, checkCollision, checkBeltObstruction, snapGear, snapBrick } from './utils/placement';
 
 const App: React.FC = () => {
   // Load initial settings from storage
@@ -118,6 +50,7 @@ const App: React.FC = () => {
   const [showRatio, setShowRatio] = useState(initialSettings.showRatio); 
   const [showRpm, setShowRpm] = useState(initialSettings.showRpm);    
   const [showTorque, setShowTorque] = useState(initialSettings.showTorque);
+  const [showLayers, setShowLayers] = useState(false);
 
   // Theme State
   const [theme, setTheme] = useState<'dark' | 'light' | 'steam'>(initialSettings.theme);
@@ -171,17 +104,31 @@ const App: React.FC = () => {
   const currentChallenge = activeChallengeId ? CHALLENGES.find(c => c.id === activeChallengeId) : null;
   const isLastChallenge = currentChallenge ? currentChallenge.id === CHALLENGES[CHALLENGES.length - 1].id : false;
   const selectedGear = selectedId ? gears.find(g => g.id === selectedId) : undefined;
+  const selectedBrick = selectedBrickId ? bricks.find(b => b.id === selectedBrickId) : undefined;
 
   // Derived State for Rendering Order
   const sortedGearsForRender = useMemo(() => {
     return [...gears].sort((a, b) => {
+        // 1. Sort by Layer (Back/3 to Front/1)
+        const layerA = a.layer || 1;
+        const layerB = b.layer || 1;
+        if (layerA !== layerB) return layerB - layerA;
+
+        // 2. Sort Axles to Bottom of their layer
+        const defA = GEAR_DEFS[a.type];
+        const defB = GEAR_DEFS[b.type];
+        
+        // If same axle group, sort by size
         if (a.axleId === b.axleId) {
-             const defA = GEAR_DEFS[a.type];
-             const defB = GEAR_DEFS[b.type];
              if (defA.isAxle) return -1;
              if (defB.isAxle) return 1;
              return defB.radius - defA.radius;
         }
+        
+        // General Sort: Axles below Gears
+        if (defA.isAxle && !defB.isAxle) return -1;
+        if (!defA.isAxle && defB.isAxle) return 1;
+
         return 0;
     });
   }, [gears]);
@@ -237,6 +184,13 @@ const App: React.FC = () => {
               const def1 = GEAR_DEFS[g1.type];
               const def2 = GEAR_DEFS[g2.type];
               
+              // LAYER CHECK (Z-Depth)
+              // Gears only mesh if on SAME LAYER.
+              const l1 = g1.layer || 1;
+              const l2 = g2.layer || 1;
+              
+              if (l1 !== l2) continue; 
+
               // Bevel Logic:
               const isBevel1 = def1.isBevel;
               const isBevel2 = def2.isBevel;
@@ -390,201 +344,6 @@ const App: React.FC = () => {
       setBelts(currentBelts);
   }, [recalculateConnections]);
 
-  const snapGear = useCallback((gear: GearState, others: GearState[], bricks: BrickState[]) => {
-      const def = GEAR_DEFS[gear.type];
-      let bestX = gear.x;
-      let bestY = gear.y;
-      let bestRotation = gear.rotation;
-      let snapped = false;
-
-      // 0. MOUNTING / STACKING
-      // A: Snap to Center of other gears (Standard Stacking)
-      for (const other of others) {
-          if (other.axleId === gear.axleId) continue;
-          if (Math.abs(gear.x - other.x) < 15 && Math.abs(gear.y - other.y) < 15) {
-              bestX = other.x;
-              bestY = other.y;
-              snapped = true;
-              break; 
-          }
-      }
-
-      // B: Snap to ANYWHERE along an Axle's length
-      if (!snapped) {
-          if (def.isAxle) {
-              // If I am an axle, do I overlap a gear?
-              for(const other of others) {
-                 if(other.axleId === gear.axleId) continue;
-                 const otherDef = GEAR_DEFS[other.type];
-                 if(!otherDef.isAxle) {
-                     // Check if the gear is on this axle
-                     if (isOverlappingAxle(other.x, other.y, gear, 20)) {
-                         if (Math.abs(gear.x - other.x) < 20 && Math.abs(gear.y - other.y) < 20) {
-                             bestX = other.x;
-                             bestY = other.y;
-                             snapped = true;
-                             break;
-                         }
-                     }
-                 }
-              }
-          } else {
-              // I am a gear, am I over an axle?
-              for(const other of others) {
-                  if (other.axleId === gear.axleId) continue;
-                  const otherDef = GEAR_DEFS[other.type];
-                  if (otherDef.isAxle) {
-                      // Project gear position onto axle
-                      if (isOverlappingAxle(gear.x, gear.y, other, 30)) {
-                          const point = getClosestPointOnAxle(gear.x, gear.y, other);
-                          bestX = point.x;
-                          bestY = point.y;
-                          snapped = true;
-                          break;
-                      }
-                  }
-              }
-          }
-      }
-
-      // 0.5 Snap Axle Tips to Gear Centers (End-to-End / Tip Connection)
-      if (!snapped) {
-        if (def.isAxle) {
-            const len = (gear.length || 3) * HOLE_SPACING;
-            const isHorz = gear.rotation === 0;
-            const tips = isHorz 
-                ? [{x: gear.x - len/2, y: gear.y}, {x: gear.x + len/2, y: gear.y}]
-                : [{x: gear.x, y: gear.y - len/2}, {x: gear.x, y: gear.y + len/2}];
-            
-            for(const tip of tips) {
-                for(const other of others) {
-                    if (other.axleId === gear.axleId) continue;
-                    if (Math.hypot(tip.x - other.x, tip.y - other.y) < 20) { // Tolerant snap
-                        const offsetX = tip.x - gear.x;
-                        const offsetY = tip.y - gear.y;
-                        bestX = other.x - offsetX;
-                        bestY = other.y - offsetY;
-                        snapped = true;
-                        break;
-                    }
-                }
-                if (snapped) break;
-            }
-        }
-        else {
-             for(const other of others) {
-                 const otherDef = GEAR_DEFS[other.type];
-                 if (otherDef.isAxle) {
-                     const len = (other.length || 3) * HOLE_SPACING;
-                     const isHorz = other.rotation === 0;
-                     const tips = isHorz 
-                        ? [{x: other.x - len/2, y: other.y}, {x: other.x + len/2, y: other.y}]
-                        : [{x: other.x, y: other.y - len/2}, {x: other.x, y: other.y + len/2}];
-                     
-                     for(const tip of tips) {
-                         if (Math.hypot(gear.x - tip.x, gear.y - tip.y) < 20) { // Tolerant snap
-                             bestX = tip.x;
-                             bestY = tip.y;
-                             snapped = true;
-                             break;
-                         }
-                     }
-                 }
-                 if (snapped) break;
-             }
-        }
-      }
-
-      // 1. Snap to mesh with other gears (Side-by-Side)
-      if (!snapped && !def.isAxle) {
-          const isBevel = def.isBevel;
-          const isVertical = gear.orientation && gear.orientation !== 'flat';
-          const isWorm = def.isWorm;
-
-          let minDiff = 15; 
-          for (const other of others) {
-              const otherDef = GEAR_DEFS[other.type];
-              if (other.axleId === gear.axleId) continue;
-              if (otherDef.isAxle) continue; // Already handled mounting
-
-              // Smart Axis Alignment
-              if (Math.abs(gear.x - other.x) < 5) bestX = other.x;
-              if (Math.abs(gear.y - other.y) < 5) bestY = other.y;
-
-              const currentDist = getDistance(gear.x, gear.y, other.x, other.y);
-              
-              let idealDist = def.radius + otherDef.radius;
-              const MESH_PADDING = -1; 
-
-              if (isBevel && isVertical && (!other.orientation || other.orientation === 'flat')) {
-                  idealDist = otherDef.radius + 9; 
-              }
-              if (isWorm) {
-                  idealDist = otherDef.radius + def.radius; // Worm radius is approx 15px
-              }
-              
-              if (Math.abs(currentDist - idealDist) < minDiff) {
-                  const angle = Math.atan2(gear.y - other.y, gear.x - other.x);
-                  
-                  const deg = angle * (180/Math.PI);
-                  let snapAngle = angle;
-                  if (Math.abs(deg - 0) < 10) snapAngle = 0;
-                  if (Math.abs(deg - 90) < 10) snapAngle = Math.PI/2;
-                  if (Math.abs(deg - 180) < 10) snapAngle = Math.PI;
-                  if (Math.abs(deg + 180) < 10) snapAngle = Math.PI;
-                  if (Math.abs(deg + 90) < 10) snapAngle = -Math.PI/2;
-
-                  bestX = other.x + Math.cos(snapAngle) * (idealDist + MESH_PADDING);
-                  bestY = other.y + Math.sin(snapAngle) * (idealDist + MESH_PADDING);
-                  snapped = true;
-                  break;
-              }
-          }
-      }
-
-      // 2. Snap to Bricks (Holes)
-      if (!snapped) {
-          let minDist = 15;
-          for (const b of bricks) {
-               const isBeam = b.brickType === 'beam';
-               const holeCount = isBeam ? b.length : Math.max(1, b.length - 1);
-               const rad = (b.rotation * Math.PI) / 180;
-               const cos = Math.cos(rad);
-               const sin = Math.sin(rad);
-               
-               for (let i=0; i<holeCount; i++) {
-                   const hx = b.x + (i * HOLE_SPACING) * cos;
-                   const hy = b.y + (i * HOLE_SPACING) * sin;
-                   
-                   const d = getDistance(gear.x, gear.y, hx, hy);
-                   if (d < minDist) {
-                       bestX = hx;
-                       bestY = hy;
-                       snapped = true;
-                       minDist = d;
-                   }
-               }
-          }
-      }
-      
-      // 3. Grid Snap
-      if (!snapped) {
-          bestX = Math.round(gear.x / 20) * 20;
-          bestY = Math.round(gear.y / 20) * 20;
-      }
-
-      return { ...gear, x: bestX, y: bestY, rotation: bestRotation };
-  }, []);
-
-  const snapBrick = useCallback((brick: BrickState, others: BrickState[]) => {
-      return {
-          ...brick,
-          x: Math.round(brick.x / 20) * 20,
-          y: Math.round(brick.y / 20) * 20
-      };
-  }, []);
-
-
   // --- Action Handlers ---
 
   const deleteGear = useCallback((id: string) => {
@@ -628,7 +387,8 @@ const App: React.FC = () => {
           rotation: source.rotation,
           connectedTo: [],
           isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
-          ratio: source.ratio, rpm: source.rpm, torque: source.torque, direction: source.direction, speed: source.speed, isJammed: false, isStalled: false
+          ratio: source.ratio, rpm: source.rpm, torque: source.torque, direction: source.direction, speed: source.speed, isJammed: false, isStalled: false,
+          layer: source.layer || 1 // Inherit layer by default
       };
       
       pushHistory(gears, belts, bricks);
@@ -681,7 +441,8 @@ const App: React.FC = () => {
       const g1: GearState = {
         id: uuidv4(), axleId: uuidv4(), type: GearType.Medium, x: b1.x, y: b1.y, rotation: 0, connectedTo: [],
         isMotor: true, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
-        ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false
+        ratio: 1, rpm: 60, torque: 100, direction: 1, speed: 1, isJammed: false, isStalled: false,
+        layer: 1
       };
       newGears.push(g1);
       
@@ -694,7 +455,8 @@ const App: React.FC = () => {
           const newGear: GearState = {
             id: uuidv4(), axleId: uuidv4(), type: type, x: lastGear.x + dist, y: lastGear.y, rotation: 0, connectedTo: [],
             isMotor: false, motorSpeed: 1, motorRpm: 60, motorTorque: 100, motorDirection: 1, load: 0,
-            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false
+            ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false,
+            layer: 1
           };
           newGears.push(newGear);
           lastGear = newGear;
@@ -1027,13 +789,6 @@ const App: React.FC = () => {
     return () => cancelAnimationFrame(animationFrameId);
   }, []);
 
-  // --- Window Event Listeners for Dragging ---
-  // MOVED TO END to resolve block-scoped variable used before declaration
-  
-  const handleDragStart = useCallback(() => {}, []); // Placeholder if needed for consistency
-
-  const handleDragEnd = useCallback(() => {}, []);
-
   // --- Coordinate Helpers ---
   const screenToWorld = useCallback((sx: number, sy: number) => {
     if (!workspaceRef.current) return { x: 0, y: 0 };
@@ -1043,125 +798,6 @@ const App: React.FC = () => {
         y: (sy - rect.top - view.y) / view.scale
     };
   }, [view]);
-
-  const findFreeSpot = useCallback((
-    preferredX: number, 
-    preferredY: number, 
-    radius: number
-  ): { x: number, y: number } => {
-    let x = preferredX;
-    let y = preferredY;
-    let angle = 0;
-    let dist = 0;
-    const angleStep = 0.5; 
-    let iterations = 0;
-    const maxIterations = 100; 
-
-    while (iterations < maxIterations) {
-        let collision = false;
-        for (const g of gears) {
-            const gDef = GEAR_DEFS[g.type];
-            const d = Math.hypot(x - g.x, y - g.y);
-            if (d < (radius + gDef.radius + 15)) {
-                collision = true;
-                break;
-            }
-        }
-
-        if (!collision) {
-             for (const b of bricks) {
-                const rad = (b.rotation * Math.PI) / 180;
-                const cos = Math.cos(rad);
-                const sin = Math.sin(rad);
-                const isBeam = b.brickType === 'beam';
-                const loopLimit = isBeam ? b.length : Math.max(1, b.length - 1);
-
-                for(let i=0; i<loopLimit; i++) {
-                    const hx = b.x + i * 40 * cos;
-                    const hy = b.y + i * 40 * sin;
-                    const d = Math.hypot(x - hx, y - hy);
-                    if (d < (radius + 20 + 15)) { 
-                        collision = true;
-                        break;
-                    }
-                }
-                if (collision) break;
-             }
-        }
-
-        if (!collision) {
-            return { x, y };
-        }
-        angle += angleStep;
-        dist = 50 + (angle * 10);
-        x = preferredX + Math.cos(angle) * dist;
-        y = preferredY + Math.sin(angle) * dist;
-        iterations++;
-    }
-    return { 
-        x: preferredX + (Math.random() - 0.5) * 50, 
-        y: preferredY + (Math.random() - 0.5) * 50 
-    };
-  }, [gears, bricks]);
-
-  // Check collision with obstacles
-  const checkCollision = (gear: Partial<GearState> & {type: GearType, x: number, y: number}, x: number, y: number, bricks: BrickState[]): boolean => {
-    const gearRadius = GEAR_DEFS[gear.type].radius;
-    const collisionRadius = gearRadius + 15; 
-
-    for (const b of bricks) {
-        if (!b.isObstacle) continue;
-
-        const rad = (b.rotation * Math.PI) / 180;
-        const cos = Math.cos(rad);
-        const sin = Math.sin(rad);
-        const len = b.brickType === 'beam' ? b.length : Math.max(1, b.length);
-        
-        for(let i=0; i < len; i++) {
-            const hx = b.x + i * 40 * cos;
-            const hy = b.y + i * 40 * sin;
-            const dist = Math.hypot(x - hx, y - hy);
-            
-            if (dist < (collisionRadius + 17)) {
-                return true;
-            }
-        }
-    }
-    return false;
-  };
-
-  // Check if a belt segment obstructs an obstacle
-  const checkBeltObstruction = (g1: GearState, g2: GearState, bricks: BrickState[]): boolean => {
-      for (const b of bricks) {
-          if (!b.isObstacle) continue;
-          const angle = -b.rotation * (Math.PI / 180);
-          const dx = b.x;
-          const dy = b.y;
-          const cos = Math.cos(angle);
-          const sin = Math.sin(angle);
-          const lx1 = (g1.x - dx) * cos - (g1.y - dy) * sin;
-          const ly1 = (g1.x - dx) * sin + (g1.y - dy) * cos;
-          const lx2 = (g2.x - dx) * cos - (g2.y - dy) * sin;
-          const ly2 = (g2.x - dx) * sin + (g2.y - dy) * cos;
-          const brickHeightHalf = 17; 
-          const minY = -brickHeightHalf;
-          const maxY = brickHeightHalf;
-          let minX, maxX;
-          if (b.brickType === 'beam') {
-             minX = -17;
-             maxX = (b.length - 1) * 40 + 17;
-          } else {
-             minX = -40;
-             maxX = (b.length * 40) - 40;
-          }
-          const safePadding = 5; 
-          if (lineIntersectsLine(lx1, ly1, lx2, ly2, minX-safePadding, minY-safePadding, maxX+safePadding, minY-safePadding)) return true; 
-          if (lineIntersectsLine(lx1, ly1, lx2, ly2, minX-safePadding, maxY+safePadding, maxX+safePadding, maxY+safePadding)) return true; 
-          if (lineIntersectsLine(lx1, ly1, lx2, ly2, minX-safePadding, minY-safePadding, minX-safePadding, maxY+safePadding)) return true; 
-          if (lineIntersectsLine(lx1, ly1, lx2, ly2, maxX+safePadding, minY-safePadding, maxX+safePadding, maxY+safePadding)) return true; 
-      }
-      return false;
-  };
 
   // --- Zoom / Pan Handlers ---
   const handleWheel = (e: React.WheelEvent) => {
@@ -1197,24 +833,41 @@ const App: React.FC = () => {
     
     const gear = gears.find(g => g.id === id);
     if (gear) {
-        if (gear.fixed) return; 
+        interactionTargetIdRef.current = id;
+        interactionTargetTypeRef.current = 'gear';
+        
+        if (gear.fixed) {
+             setSelectedId(id);
+             setSelectedBrickId(null);
+             return; 
+        }
+        
         undoRef.current = { gears, belts, bricks };
         hasMovedRef.current = false;
         
-        setDraggingAxleId(gear.axleId);
-        
-        // Snapshot Group
-        const group = gears.filter(g => g.axleId === gear.axleId);
-        const map = new Map<string, {x: number, y: number}>();
-        group.forEach(g => map.set(g.id, { x: g.x, y: g.y }));
-        dragStateRef.current = map;
+        const def = GEAR_DEFS[gear.type];
+        const isAxle = def.isAxle;
+        const groupSize = gears.filter(g => g.axleId === gear.axleId).length;
+
+        // TOUCH LOGIC: Axle = Group, Gear = Detach
+        const shouldGroupDrag = isAxle; 
+
+        if (shouldGroupDrag && groupSize > 1) {
+            setDraggingAxleId(gear.axleId);
+            const map = new Map<string, {x: number, y: number}>();
+            const group = gears.filter(g => g.axleId === gear.axleId);
+            group.forEach(g => map.set(g.id, { x: g.x, y: g.y }));
+            dragStateRef.current = map;
+        } else {
+            const newAxleId = uuidv4();
+            setGears(prev => prev.map(g => g.id === id ? { ...g, axleId: newAxleId } : g));
+            setDraggingAxleId(newAxleId);
+            dragStateRef.current = new Map([[id, { x: gear.x, y: gear.y }]]);
+        }
 
         const touch = e.touches[0];
         const worldPos = screenToWorld(touch.clientX, touch.clientY);
         setDragOffset({ x: worldPos.x - gear.x, y: worldPos.y - gear.y });
-        
-        interactionTargetIdRef.current = id;
-        interactionTargetTypeRef.current = 'gear';
     }
   };
 
@@ -1225,7 +878,11 @@ const App: React.FC = () => {
     interactionTargetTypeRef.current = 'brick';
     const brick = bricks.find(b => b.id === id);
     if (brick) {
-        if (brick.fixed) return; 
+        if (brick.fixed) {
+             setSelectedBrickId(id);
+             setSelectedId(null);
+             return; 
+        } 
         undoRef.current = { gears, belts, bricks };
         hasMovedRef.current = false;
         setDraggingBrickId(id);
@@ -1273,7 +930,6 @@ const App: React.FC = () => {
                 const deltaX = targetX - startPos.x;
                 const deltaY = targetY - startPos.y;
                 
-                // Ghost Snap for Touch
                 const refGearOriginal = gears.find(g => g.id === clickedId);
                  if (refGearOriginal) {
                      const dummyGear = { ...refGearOriginal, x: targetX, y: targetY };
@@ -1348,7 +1004,7 @@ const App: React.FC = () => {
             const dummyGear = { type: data.type as GearType, x: startX, y: startY } as GearState;
             if (checkCollision(dummyGear, startX, startY, bricks)) {
                 const def = GEAR_DEFS[data.type as GearType];
-                const freePos = findFreeSpot(startX, startY, def.radius);
+                const freePos = findFreeSpot(startX, startY, def.radius, gears, bricks);
                 startX = freePos.x;
                 startY = freePos.y;
             }
@@ -1380,7 +1036,7 @@ const App: React.FC = () => {
           const rect = workspaceRef.current.getBoundingClientRect();
           const center = screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
           const def = GEAR_DEFS[type];
-          const pos = findFreeSpot(center.x, center.y, def.radius);
+          const pos = findFreeSpot(center.x, center.y, def.radius, gears, bricks);
           addNewGear(type, pos.x, pos.y, undefined, length);
           if (window.innerWidth < 768) {
               setIsSidebarOpen(false);
@@ -1392,7 +1048,7 @@ const App: React.FC = () => {
       if (workspaceRef.current) {
           const rect = workspaceRef.current.getBoundingClientRect();
           const center = screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
-          const pos = findFreeSpot(center.x, center.y, 40);
+          const pos = findFreeSpot(center.x, center.y, 40, gears, bricks);
           addNewBrick(length, type, pos.x, pos.y);
           if (window.innerWidth < 768) {
               setIsSidebarOpen(false);
@@ -1408,7 +1064,8 @@ const App: React.FC = () => {
       type, x, y, rotation: 0, step: 0, connectedTo: [], length: length,
       isMotor: false, motorSpeed: 1, motorRpm: globalRpm, motorTorque: 100, motorDirection: 1,
       load: 0, ratio: 0, rpm: 0, torque: 0, direction: 1, speed: 0, isJammed: false, isStalled: false,
-      orientation: 'flat'
+      orientation: 'flat',
+      layer: 1
     };
 
     let gearToAdd = newGear;
@@ -1437,7 +1094,6 @@ const App: React.FC = () => {
       setSelectedId(null); 
   };
 
-  // --- Mouse Handlers ---
   const handleGearMouseDown = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (e.button !== 0) return; 
@@ -1462,33 +1118,39 @@ const App: React.FC = () => {
 
     const gear = gears.find(g => g.id === id);
     if (gear) {
-        if (gear.fixed) return;
+        interactionTargetIdRef.current = id;
+        interactionTargetTypeRef.current = 'gear';
+        
+        if (gear.fixed) {
+             setSelectedId(id);
+             setSelectedBrickId(null);
+             return; 
+        }
         
         undoRef.current = { gears, belts, bricks }; 
         hasMovedRef.current = false;
         
-        // Detach Logic (Shift + Click)
-        if (e.shiftKey) {
-            const newAxleId = uuidv4();
-            setGears(prev => prev.map(g => g.id === id ? { ...g, axleId: newAxleId } : g));
-            setDraggingAxleId(newAxleId);
-            
-            // Only this gear is in the new group for dragging purposes immediately
-            dragStateRef.current = new Map([[id, { x: gear.x, y: gear.y }]]);
-        } else {
-            // Group Drag
+        const def = GEAR_DEFS[gear.type];
+        const isAxle = def.isAxle;
+        const groupSize = gears.filter(g => g.axleId === gear.axleId).length;
+
+        const shouldGroupDrag = isAxle ? !e.shiftKey : e.shiftKey;
+
+        if (shouldGroupDrag && groupSize > 1) {
             setDraggingAxleId(gear.axleId);
             const group = gears.filter(g => g.axleId === gear.axleId);
             const map = new Map<string, {x: number, y: number}>();
             group.forEach(g => map.set(g.id, { x: g.x, y: g.y }));
             dragStateRef.current = map;
+        } else {
+            const newAxleId = uuidv4();
+            setGears(prev => prev.map(g => g.id === id ? { ...g, axleId: newAxleId } : g));
+            setDraggingAxleId(newAxleId);
+            dragStateRef.current = new Map([[id, { x: gear.x, y: gear.y }]]);
         }
 
         const worldPos = screenToWorld(e.clientX, e.clientY);
         setDragOffset({ x: worldPos.x - gear.x, y: worldPos.y - gear.y });
-        
-        interactionTargetIdRef.current = id;
-        interactionTargetTypeRef.current = 'gear';
     }
   };
 
@@ -1504,7 +1166,11 @@ const App: React.FC = () => {
     interactionTargetTypeRef.current = 'brick';
     const brick = bricks.find(b => b.id === id);
     if (brick) {
-        if (brick.fixed) return; 
+        if (brick.fixed) {
+             setSelectedBrickId(id);
+             setSelectedId(null);
+             return; 
+        }
         undoRef.current = { gears, belts, bricks };
         hasMovedRef.current = false;
         setDraggingBrickId(id);
@@ -1527,19 +1193,15 @@ const App: React.FC = () => {
       const startPos = dragStateRef.current.get(clickedId);
       
       if (startPos) {
-          // Target position for the clicked gear
           const targetX = worldPos.x - dragOffset.x;
           const targetY = worldPos.y - dragOffset.y;
           
           const deltaX = targetX - startPos.x;
           const deltaY = targetY - startPos.y;
           
-          // Ghost Snap Preview (Based on clicked gear)
-          // We construct a dummy of the clicked gear at target pos
           const refGearOriginal = gears.find(g => g.id === clickedId);
           if (refGearOriginal) {
              const dummyGear = { ...refGearOriginal, x: targetX, y: targetY };
-             // We need to exclude the whole moving group from 'others' to snap against static stuff
              const others = gears.filter(g => g.axleId !== draggingAxleId);
              const snapped = snapGear(dummyGear, others, bricks);
              
@@ -1569,11 +1231,11 @@ const App: React.FC = () => {
           return b;
       }));
     }
-  }, [isPanning, panStart, draggingAxleId, draggingBrickId, dragOffset, screenToWorld, gears, bricks, snapGear]);
+  }, [isPanning, panStart, draggingAxleId, draggingBrickId, dragOffset, screenToWorld, gears, bricks]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
-    setSnapPreview(null); // Clear ghost
+    setSnapPreview(null);
 
     if (!hasMovedRef.current && interactionTargetIdRef.current) {
         if (interactionTargetTypeRef.current === 'gear') {
@@ -1592,8 +1254,6 @@ const App: React.FC = () => {
         const movingAxleGears = prev.filter(g => g.axleId === draggingAxleId);
         if (movingAxleGears.length === 0) return prev;
         
-        // Identify Reference Gear (The one the user grabbed)
-        // Fallback to first if user switched interactions weirdly (unlikely)
         let refGear = movingAxleGears.find(g => g.id === interactionTargetIdRef.current);
         if (!refGear) refGear = movingAxleGears[0];
 
@@ -1643,29 +1303,24 @@ const App: React.FC = () => {
             audioManager.playSnap();
         }
 
-        // Check for mounting (Merging Axles)
         const finalX = refGear.x + deltaX;
         const finalY = refGear.y + deltaY;
         let newAxleId = draggingAxleId;
         let merged = false;
 
-        // 1. Check exact center overlap (Standard Stacking)
         const mountTarget = others.find(g => Math.abs(g.x - finalX) < 1 && Math.abs(g.y - finalY) < 1);
         if (mountTarget) {
             newAxleId = mountTarget.axleId;
             merged = true;
         }
         
-        // 2. Check mounting along axle length (Gear on Axle / Axle on Gear)
         if (!merged) {
             const def = GEAR_DEFS[refGear.type];
             if (def.isAxle) {
-                // I am an axle, am I dropping onto a gear?
                 for (const other of others) {
                     if (other.axleId === draggingAxleId) continue;
                     const otherDef = GEAR_DEFS[other.type];
                     if (!otherDef.isAxle) {
-                        // Check if the gear is on the line of the dragged axle
                         const axleState = { ...refGear, x: finalX, y: finalY };
                         if (isOverlappingAxle(other.x, other.y, axleState, 10)) {
                              newAxleId = other.axleId;
@@ -1675,7 +1330,6 @@ const App: React.FC = () => {
                     }
                 }
             } else {
-                // I am a gear, am I dropping onto an axle?
                 for (const other of others) {
                     if (other.axleId === draggingAxleId) continue;
                     const otherDef = GEAR_DEFS[other.type];
@@ -1702,7 +1356,7 @@ const App: React.FC = () => {
                     x: g.x + deltaX, 
                     y: g.y + deltaY, 
                     rotation: (g.rotation + deltaRot) % 360,
-                    axleId: newAxleId // Apply merged ID
+                    axleId: newAxleId 
                 };
             }
             return g;
@@ -1744,9 +1398,8 @@ const App: React.FC = () => {
         hasMovedRef.current = false;
         interactionTargetIdRef.current = null; 
     }
-  }, [draggingAxleId, draggingBrickId, pushHistory, belts, bricks, recalculateConnections, snapGear, snapBrick]);
+  }, [draggingAxleId, draggingBrickId, pushHistory, belts, bricks, recalculateConnections]);
 
-  // --- Window Event Listeners for Dragging ---
   useEffect(() => {
     const onMove = (e: MouseEvent) => handleMouseMove(e);
     const onUp = () => handleMouseUp();
@@ -1772,33 +1425,17 @@ const App: React.FC = () => {
           onStepChange={handleTutorialStepChange}
       />
 
-      <div className="absolute z-50 flex gap-2 md:gap-3 top-4 right-4 md:top-auto md:bottom-6 md:right-6">
-        <button 
-            onClick={() => { setCurrentTutorialSteps(defaultTutorialSteps); setIsTutorialOpen(true); }}
-            className="hidden md:flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-colors text-xl shadow-lg hover:scale-105 active:scale-95 font-bold"
-            style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}
-            title={t.help}
-        >?</button>
-        <button 
-            onClick={toggleTheme}
-            className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 transition-colors text-xl shadow-lg hover:scale-105 active:scale-95"
-            style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}
-            title={getThemeTitle()}
-        >{getThemeIcon()}</button>
-        <button 
-            onClick={() => setIsMuted(!isMuted)}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-2xl border-2 transition-colors shadow-lg hover:scale-105 active:scale-95`}
-            style={{
-                backgroundColor: isMuted ? 'rgba(127, 29, 29, 0.5)' : 'var(--bg-panel)',
-                color: isMuted ? '#fca5a5' : 'var(--text-accent)',
-                borderColor: isMuted ? '#991b1b' : 'var(--border-color)'
-            }}
-        ><span className="text-lg">{isMuted ? '🔇' : '🔊'}</span><span className="hidden sm:inline">{isMuted ? t.mute : t.sound}</span></button>
-        <div className="flex rounded-2xl border-2 p-1 shadow-lg" style={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border-color)' }}>
-            <button onClick={() => setLang('en')} className={`px-3 py-2 text-sm font-bold rounded-xl transition-colors`} style={{ backgroundColor: lang === 'en' ? 'var(--text-accent)' : 'transparent', color: lang === 'en' ? '#fff' : 'var(--text-secondary)' }}>EN</button>
-            <button onClick={() => setLang('zh-TW')} className={`px-3 py-2 text-sm font-bold rounded-xl transition-colors`} style={{ backgroundColor: lang === 'zh-TW' ? 'var(--text-accent)' : 'transparent', color: lang === 'zh-TW' ? '#fff' : 'var(--text-secondary)' }}>中文</button>
-        </div>
-      </div>
+      <GlobalControls 
+          lang={lang}
+          setLang={setLang}
+          theme={theme}
+          toggleTheme={toggleTheme}
+          isMuted={isMuted}
+          setIsMuted={setIsMuted}
+          onOpenTutorial={() => { setCurrentTutorialSteps(defaultTutorialSteps); setIsTutorialOpen(true); }}
+          getThemeTitle={getThemeTitle}
+          getThemeIcon={getThemeIcon}
+      />
 
       <div className="absolute bottom-14 md:bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-[var(--text-secondary)] opacity-50 pointer-events-none font-mono tracking-widest uppercase z-10">
          Made with <span className="text-red-500 font-bold">love</span> by STEAM SQUAD
@@ -1821,92 +1458,27 @@ const App: React.FC = () => {
       />
       
       <div className="flex-1 flex flex-col relative">
-        {/* Toolbar */}
-        <div id="toolbar-controls" className="absolute top-6 left-6 z-30 flex flex-col gap-4 pointer-events-none">
-          <button 
-            className="pointer-events-auto md:hidden w-12 h-12 bg-[var(--button-bg)] border-2 border-[var(--border-color)] rounded-xl flex items-center justify-center shadow-lg text-2xl text-[var(--text-accent)] hover:brightness-110 active:scale-95 transition-transform"
-            onClick={() => setIsMobileToolbarOpen(!isMobileToolbarOpen)}
-          >
-            {isMobileToolbarOpen ? '✕' : '⚙️'}
-          </button>
+        
+        <Toolbar 
+            lang={lang}
+            globalRpm={globalRpm}
+            onGlobalRpmChange={handleGlobalRpmChange}
+            showSpecs={showSpecs} setShowSpecs={setShowSpecs}
+            showRpm={showRpm} setShowRpm={setShowRpm}
+            showRatio={showRatio} setShowRatio={setShowRatio}
+            showTorque={showTorque} setShowTorque={setShowTorque}
+            showRoles={showRoles} setShowRoles={setShowRoles}
+            showLayers={showLayers} setShowLayers={setShowLayers}
+            onReset={resetPlayground}
+            onExample={generateRandomLayout}
+            onFit={() => setView({ x: 0, y: 0, scale: 1 })}
+            onZoomIn={() => setView(v => ({ ...v, scale: Math.min(4, v.scale + 0.2) }))}
+            onZoomOut={() => setView(v => ({ ...v, scale: Math.max(0.2, v.scale - 0.2) }))}
+            isMobileToolbarOpen={isMobileToolbarOpen}
+            setIsMobileToolbarOpen={setIsMobileToolbarOpen}
+            beltSourceId={beltSourceId}
+        />
 
-          <div className={`
-            flex flex-col gap-4 transition-all duration-300 origin-top-left
-            ${isMobileToolbarOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-95 opacity-0 pointer-events-none h-0 overflow-hidden md:scale-100 md:opacity-100 md:pointer-events-auto md:h-auto md:overflow-visible'}
-          `}>
-
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center pointer-events-auto">
-                <div className="flex gap-3 backdrop-blur-md p-3 rounded-2xl shadow-xl border-2" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
-                    <button onClick={resetPlayground} className="px-5 py-3 border-2 rounded-xl hover:opacity-80 text-sm font-bold transition-colors shadow-sm uppercase tracking-wide" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>{t.reset}</button>
-                    <button id="btn-example" onClick={generateRandomLayout} className="px-5 py-3 border-2 rounded-xl hover:opacity-80 text-sm font-bold transition-colors shadow-sm uppercase tracking-wide" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>🎲 {t.example}</button>
-                </div>
-
-                <div className="flex gap-2 backdrop-blur-md p-3 rounded-2xl shadow-xl border-2" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
-                    <button onClick={() => setView(v => ({ ...v, scale: Math.min(4, v.scale + 0.2) }))} className="w-12 h-12 flex items-center justify-center rounded-xl border-2 hover:bg-white/10 text-2xl font-bold" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>+</button>
-                    <button onClick={() => setView(v => ({ ...v, scale: Math.max(0.2, v.scale - 0.2) }))} className="w-12 h-12 flex items-center justify-center rounded-xl border-2 hover:bg-white/10 text-2xl font-bold" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>-</button>
-                    <button onClick={() => setView({ x: 0, y: 0, scale: 1 })} className="px-4 h-12 flex items-center justify-center rounded-xl border-2 hover:bg-white/10 text-sm font-bold uppercase" style={{ backgroundColor: 'var(--button-bg)', borderColor: 'var(--border-color)', color: 'var(--text-accent)' }}>{t.fit}</button>
-                </div>
-            </div>
-
-            <div className="pointer-events-auto backdrop-blur-md p-4 rounded-2xl shadow-xl border-2 max-w-[300px] sm:max-w-none" style={{ backgroundColor: 'var(--bg-panel-translucent)', borderColor: 'var(--border-color)' }}>
-                <div className="flex flex-wrap items-center gap-6 mb-3">
-                    <div className="flex items-center gap-3 flex-1 min-w-[150px]">
-                        <label htmlFor="global-rpm" className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{t.rpm}</label>
-                        <input id="global-rpm" type="range" min="1" max="300" step="1" value={globalRpm} onChange={handleGlobalRpmChange} className="kid-slider accent-cyan-500" />
-                        <span className="text-sm font-mono font-bold w-12 text-right" style={{ color: 'var(--text-accent)' }}>{globalRpm}</span>
-                    </div>
-                </div>
-                <div className="w-full h-px my-2 bg-gray-700/50"></div>
-                <div className="flex flex-wrap gap-4">
-                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                        <input type="checkbox" checked={showSpecs} onChange={(e) => setShowSpecs(e.target.checked)} className="peer sr-only" />
-                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showSpecs ? 'var(--text-accent)' : 'var(--border-color)', borderColor: showSpecs ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
-                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showSpecs ? 'translate-x-3' : ''}`}></div>
-                        </div>
-                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showSpecs ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.spec}</span>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                        <input type="checkbox" checked={showRpm} onChange={(e) => setShowRpm(e.target.checked)} className="peer sr-only" />
-                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showRpm ? 'var(--text-accent)' : 'var(--border-color)', borderColor: showRpm ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
-                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showRpm ? 'translate-x-3' : ''}`}></div>
-                        </div>
-                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRpm ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.rpm}</span>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                        <input type="checkbox" checked={showRatio} onChange={(e) => setShowRatio(e.target.checked)} className="peer sr-only" />
-                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showRatio ? 'var(--text-accent)' : 'var(--border-color)', borderColor: showRatio ? 'var(--text-accent)' : 'var(--text-secondary)' }}>
-                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showRatio ? 'translate-x-3' : ''}`}></div>
-                        </div>
-                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRatio ? 'var(--text-primary)' : 'var(--text-muted)' }}>{t.ratio}</span>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                        <input type="checkbox" checked={showTorque} onChange={(e) => setShowTorque(e.target.checked)} className="peer sr-only" />
-                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showTorque ? '#a855f7' : 'var(--border-color)', borderColor: showTorque ? '#a855f7' : 'var(--text-secondary)' }}>
-                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showTorque ? 'translate-x-3' : ''}`}></div>
-                        </div>
-                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showTorque ? '#d8b4fe' : 'var(--text-muted)' }}>{t.torque}</span>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer group bg-black/10 px-3 py-2 rounded-lg hover:bg-black/20 transition-colors">
-                        <input type="checkbox" checked={showRoles} onChange={(e) => setShowRoles(e.target.checked)} className="peer sr-only" />
-                        <div className="w-8 h-5 rounded-full border-2 transition-colors relative" style={{ backgroundColor: showRoles ? '#4ade80' : 'var(--border-color)', borderColor: showRoles ? '#4ade80' : 'var(--text-secondary)' }}>
-                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showRoles ? 'translate-x-3' : ''}`}></div>
-                        </div>
-                        <span className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: showRoles ? '#4ade80' : 'var(--text-muted)' }}>{t.role}</span>
-                    </label>
-                </div>
-            </div>
-          
-            {beltSourceId && (
-                <div className="pointer-events-auto w-full max-w-sm bg-purple-600/90 border-2 border-purple-400 text-white text-base font-bold px-6 py-4 rounded-2xl shadow-2xl animate-pulse text-center">
-                    {t.beltMode}
-                    <div className="text-xs opacity-80 mt-1 font-normal">(Tap target gear or ESC)</div>
-                </div>
-            )}
-
-          </div>
-        </div>
-
-        {/* Workspace */}
         <div 
           id="workspace-area"
           ref={workspaceRef}
@@ -1987,7 +1559,6 @@ const App: React.FC = () => {
                   );
                 })}
                 
-                {/* GHOST PREVIEW (Below normal gears) */}
                 {snapPreview && draggingAxleId && (() => {
                    const g = gears.find(g => g.id === interactionTargetIdRef.current);
                    if(!g) return null;
@@ -2000,7 +1571,7 @@ const App: React.FC = () => {
                              isObjectiveTarget={false}
                              roleHighlight={null}
                              axleMates={[]}
-                             showSpecs={false} showRatio={false} showRpm={false} showTorque={false}
+                             showSpecs={false} showRatio={false} showRpm={false} showTorque={false} showLayers={false}
                              lang={lang} theme={theme}
                              onMouseDown={() => {}} onTouchStart={() => {}} onClick={() => {}}
                            />
@@ -2020,6 +1591,7 @@ const App: React.FC = () => {
                     showRatio={showRatio}
                     showRpm={showRpm}
                     showTorque={showTorque}
+                    showLayers={showLayers}
                     lang={lang}
                     theme={theme}
                     onMouseDown={handleGearMouseDown} 
@@ -2081,11 +1653,20 @@ const App: React.FC = () => {
 
         <GearProperties 
             gear={selectedGear} 
+            brick={selectedBrick}
             allGears={gears}
             onUpdate={updateGear} 
             onAddSibling={addGearOnSameAxle}
             onConnectBelt={handleGearConnectBeltStart}
             onDelete={deleteGear}
+            onDeleteBrick={deleteBrick}
+            onRotateBrick={(id) => {
+                if (selectedBrick) {
+                    pushHistory(gears, belts, bricks);
+                    setBricks(prev => prev.map(b => b.id === id ? { ...b, rotation: (b.rotation + 90) % 360 } : b));
+                    audioManager.playSnap();
+                }
+            }}
             isOpen={isPropertiesOpen}
             onToggle={() => setIsPropertiesOpen(!isPropertiesOpen)}
             lang={lang}

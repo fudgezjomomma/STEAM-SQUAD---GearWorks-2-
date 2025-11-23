@@ -1,4 +1,5 @@
 
+
 export type Language = 'en' | 'zh-TW';
 
 export const TRANSLATIONS = {
@@ -15,7 +16,7 @@ export const TRANSLATIONS = {
     solved: "Solved",
     targeting: "Targeting...",
     missionAccomplished: "Mission Accomplished!",
-    buildClubFooter: "GEAR STUDIO v1.0",
+    buildClubFooter: "GEAR STUDIO v1.3",
     
     // Tabs
     tabGears: "Gears",
@@ -31,6 +32,7 @@ export const TRANSLATIONS = {
     spec: "Spec",
     ratio: "Ratio",
     role: "Role",
+    layer: "Layer",
     drive: "Drive",
     driven: "Driven",
     idler: "Idler",
@@ -55,6 +57,10 @@ export const TRANSLATIONS = {
     propTitle: "Properties",
     noSelection: "No Component Selected",
     noSelectionDesc: "Select a gear or brick on the workspace to view and edit its properties.",
+    typeAxle: "Drive Shaft",
+    typeGear: "Gear",
+    typeBeam: "Technic Beam",
+    typeBrick: "Technic Brick",
     telemetry: "Telemetry",
     speed: "Speed",
     direction: "Direction",
@@ -77,6 +83,10 @@ export const TRANSLATIONS = {
     cw: "CW ↻",
     ccw: "CCW ↺",
     dismantle: "Dismantle Component",
+    length: "Length",
+    rotation: "Rotation",
+    rotate90: "Rotate 90°",
+    delete: "Delete",
     
     // Belt / Pulley
     connectBelt: "Connect Belt (Pulley)",
@@ -131,7 +141,7 @@ export const TRANSLATIONS = {
     solved: "已完成",
     targeting: "目標鎖定中...",
     missionAccomplished: "任務完成！",
-    buildClubFooter: "GEAR STUDIO v1.0",
+    buildClubFooter: "GEAR STUDIO v1.3",
 
     // Tabs
     tabGears: "齒輪",
@@ -147,6 +157,7 @@ export const TRANSLATIONS = {
     spec: "規格",
     ratio: "比率",
     role: "角色",
+    layer: "層級",
     drive: "驅動",
     driven: "被動",
     idler: "惰輪",
@@ -171,6 +182,10 @@ export const TRANSLATIONS = {
     propTitle: "零件屬性",
     noSelection: "未選擇組件",
     noSelectionDesc: "在工作區點擊齒輪或積木以查看和編輯其屬性。",
+    typeAxle: "傳動軸",
+    typeGear: "齒輪",
+    typeBeam: "科技橫梁",
+    typeBrick: "科技積木",
     telemetry: "遙測數據",
     speed: "倍率",
     direction: "方向",
@@ -193,6 +208,10 @@ export const TRANSLATIONS = {
     cw: "順時針 ↻",
     ccw: "逆時針 ↺",
     dismantle: "拆除組件",
+    length: "長度",
+    rotation: "旋轉",
+    rotate90: "旋轉 90°",
+    delete: "刪除",
 
     // Belt / Pulley
     connectBelt: "連接皮帶 (滑輪)",

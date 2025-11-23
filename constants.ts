@@ -1,4 +1,5 @@
 
+
 import { GearType, GearDef } from './types';
 
 // Scaling factor: 2.5 pixels per tooth roughly gives good screen sizes
@@ -154,6 +155,16 @@ export const GEAR_DEFS: Record<GearType, GearDef> = {
         dark: '#475569', // Slate-600
         light: '#94A3B8', // Slate-400
         steam: '#3F3F46'  // Zinc-700
+    }
+  },
+  [GearType.Liftarm]: {
+    type: GearType.Liftarm,
+    teeth: 0,
+    radius: 17, // Half of 34 (Brick Width)
+    colors: {
+        dark: '#94A3B8',
+        light: '#E2E8F0',
+        steam: '#FEF9C3'
     }
   }
 };
